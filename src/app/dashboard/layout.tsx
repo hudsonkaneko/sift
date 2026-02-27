@@ -116,12 +116,21 @@ export default function DashboardLayout({
       </div>
 
       {/* Settings modal */}
-      {showSettings && preferences && (
-        <SettingsPanel
-          preferences={preferences}
-          onUpdate={updatePreferences}
-          onClose={() => setShowSettings(false)}
-        />
+      {showSettings && (
+        preferences ? (
+          <SettingsPanel
+            preferences={preferences}
+            onUpdate={updatePreferences}
+            onClose={() => setShowSettings(false)}
+          />
+        ) : (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+            <div className="bg-bg-primary border border-border rounded-2xl shadow-lg p-8">
+              <p className="text-sm text-text-muted">Loading settings...</p>
+              <button onClick={() => setShowSettings(false)} className="mt-3 text-xs text-text-muted hover:text-text-secondary">Close</button>
+            </div>
+          </div>
+        )
       )}
     </div>
   );

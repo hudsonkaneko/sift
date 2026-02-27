@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import useSWR from 'swr';
 import { apiFetch } from '@/lib/utils/api';
 import type { ChatSession, ChatMessage } from '@/lib/types/domain';
@@ -15,6 +15,21 @@ export function useChat() {
 
   // Auto-select first session when sessions load
   const effectiveSessionId = activeSessionId || sessions?.[0]?.id || null;
+
+  // Auto-create a session if none exist
+  const autoCreated = useRef(false);
+  useEffect(() => {
+    if (sessions && sessions.length === 0 && !autoCreated.current) {
+      autoCreated.current = true;
+      apiFetch<{ id: string }>('/api/chat/sessions', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'New Chat' }),
+      }).then(data => {
+        setActiveSessionId(data.id);
+        mutateSessions();
+      }).catch(() => {});
+    }
+  }, [sessions, mutateSessions]);
 
   const fetchMessages = useCallback(async (sessionId: string) => {
     const rows = await apiFetch<Array<Record<string, unknown>>>(`/api/chat/sessions/${sessionId}/messages`);

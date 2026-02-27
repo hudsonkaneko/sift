@@ -83,9 +83,13 @@ export default function ChatPanel({
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   };
 
-  const userInitials = user
-    ? (user.firstName?.[0] || '') + (user.lastName?.[0] || '') || user.emailAddresses[0]?.emailAddress[0]?.toUpperCase() || '?'
-    : '?';
+  const [userInitials, setUserInitials] = useState('?');
+  useEffect(() => {
+    if (user) {
+      const initials = (user.firstName?.[0] || '') + (user.lastName?.[0] || '') || user.emailAddresses[0]?.emailAddress[0]?.toUpperCase() || '?';
+      setUserInitials(initials);
+    }
+  }, [user]);
 
   const activeSession = sessions.find(s => s.id === activeSessionId);
 

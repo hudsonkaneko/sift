@@ -37,6 +37,7 @@ export function mapFixedBlock(row: any): FixedBlock {
     endMinute: row.end_minute,
     userCreated: row.user_created,
     color: row.color,
+    recurring: row.recurring ?? false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

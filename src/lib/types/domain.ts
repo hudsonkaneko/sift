@@ -40,6 +40,7 @@ export interface FixedBlock {
   endMinute: number;
   userCreated: boolean;
   color: string | null;
+  recurring: boolean;
   createdAt: string;
   updatedAt: string;
 }

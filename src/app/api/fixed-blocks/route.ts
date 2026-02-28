@@ -42,6 +42,7 @@ export async function POST(req: Request) {
       end_minute: body.endMinute || 0,
       user_created: body.userCreated ?? true,
       color: body.color || null,
+      recurring: body.recurring ?? false,
     })
     .select()
     .single();

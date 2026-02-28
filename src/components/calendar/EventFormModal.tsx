@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Repeat } from 'lucide-react';
 import { COLOR_PALETTE, DAYS_SHORT } from '@/lib/utils/format';
 import { START_HOUR, END_HOUR, SNAP_MINUTES } from './constants';
 
@@ -10,6 +10,7 @@ export interface EventFormState {
   blockId?: string;
   name: string;
   color: string | null;
+  recurring: boolean;
   dayOfWeek: number;
   startHour: number;
   startMinute: number;
@@ -26,6 +27,7 @@ interface Props {
 export default function EventFormModal({ form, onClose, onSave }: Props) {
   const [name, setName] = useState(form.name);
   const [color, setColor] = useState<string | null>(form.color);
+  const [recurring, setRecurring] = useState(form.recurring);
   const [dayOfWeek, setDayOfWeek] = useState(form.dayOfWeek);
   const [startHour, setStartHour] = useState(form.startHour);
   const [startMinute, setStartMinute] = useState(form.startMinute);
@@ -35,6 +37,7 @@ export default function EventFormModal({ form, onClose, onSave }: Props) {
   useEffect(() => {
     setName(form.name);
     setColor(form.color);
+    setRecurring(form.recurring);
     setDayOfWeek(form.dayOfWeek);
     setStartHour(form.startHour);
     setStartMinute(form.startMinute);
@@ -52,6 +55,7 @@ export default function EventFormModal({ form, onClose, onSave }: Props) {
       ...form,
       name: name.trim(),
       color,
+      recurring,
       dayOfWeek,
       startHour,
       startMinute,
@@ -129,6 +133,22 @@ export default function EventFormModal({ form, onClose, onSave }: Props) {
               </button>
             )}
           </div>
+        </div>
+
+        {/* Recurring */}
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={() => setRecurring(!recurring)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-colors w-full ${
+              recurring
+                ? 'bg-accent/10 text-accent border border-accent/25'
+                : 'bg-bg-secondary text-text-secondary border border-border hover:bg-bg-tertiary'
+            }`}
+          >
+            <Repeat size={14} />
+            <span className="font-medium">{recurring ? 'Repeats weekly' : 'Does not repeat'}</span>
+          </button>
         </div>
 
         {/* Time */}

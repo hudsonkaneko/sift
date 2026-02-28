@@ -30,6 +30,9 @@ interface Props {
   onSlotDelete: (id: string) => void;
   onMergeMove: (slotId: string, targetDay: number, targetStartHour: number, targetStartMinute: number) => void;
   onBlockUpdate: (id: string, updates: {
+    name?: string;
+    color?: string | null;
+    recurring?: boolean;
     dayOfWeek?: number;
     startHour?: number;
     startMinute?: number;
@@ -45,6 +48,7 @@ interface Props {
     endHour: number;
     endMinute: number;
     color: string | null;
+    recurring: boolean;
   }) => void;
   onGenerateSchedule?: () => void;
   generatingSchedule?: boolean;
@@ -104,6 +108,7 @@ export default function CalendarView({
       mode: 'create',
       name: '',
       color: null,
+      recurring: false,
       dayOfWeek,
       startHour,
       startMinute,
@@ -181,9 +186,13 @@ export default function CalendarView({
         endHour: form.endHour,
         endMinute: form.endMinute,
         color: form.color,
+        recurring: form.recurring,
       });
     } else if (form.blockId) {
       onBlockUpdate(form.blockId, {
+        name: form.name,
+        color: form.color,
+        recurring: form.recurring,
         dayOfWeek: form.dayOfWeek,
         startHour: form.startHour,
         startMinute: form.startMinute,
@@ -202,6 +211,7 @@ export default function CalendarView({
       blockId: block.id,
       name: block.name,
       color: block.color,
+      recurring: block.recurring,
       dayOfWeek: block.dayOfWeek,
       startHour: block.startHour,
       startMinute: block.startMinute,

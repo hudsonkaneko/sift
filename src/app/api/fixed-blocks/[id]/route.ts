@@ -22,6 +22,7 @@ export async function PATCH(
   if (body.endHour !== undefined) updates.end_hour = body.endHour;
   if (body.endMinute !== undefined) updates.end_minute = body.endMinute;
   if (body.color !== undefined) updates.color = body.color;
+  if (body.recurring !== undefined) updates.recurring = body.recurring;
   updates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase

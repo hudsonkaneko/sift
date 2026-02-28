@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Lock } from 'lucide-react';
+import { Lock, Repeat } from 'lucide-react';
 import type { ScheduledSlotWithTask, FixedBlock } from '@/lib/types/domain';
 import {
   HOUR_HEIGHT, START_HOUR, END_HOUR, GRID_PAD_TOP,
@@ -132,7 +132,12 @@ export default function DayColumn({
               onBlockContextMenu(e, block);
             }}
           >
-            <div className="font-medium truncate">{block.name}</div>
+            <div className="flex items-center gap-1">
+              <span className="font-medium truncate">{block.name}</span>
+              {block.recurring && (
+                <Repeat size={10} className="flex-shrink-0 opacity-60" />
+              )}
+            </div>
             {style.height > 28 && (
               <div className="text-[10px] opacity-60 mt-0.5">
                 {formatTime(block.startHour, block.startMinute)} – {formatTime(block.endHour, block.endMinute)}

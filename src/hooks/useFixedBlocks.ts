@@ -19,11 +19,26 @@ export function useFixedBlocks() {
   };
 
   const updateFixedBlock = async (id: string, updates: Partial<FixedBlock>) => {
-    await apiFetch(`/api/fixed-blocks/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(updates),
-    });
-    mutate();
+    // Optimistic update: immediately reflect the change in the UI
+    mutate(
+      (current) => {
+        if (!current) return current;
+        return current.map(block => {
+          if (block.id !== id) return block;
+          return { ...block, ...updates };
+        });
+      },
+      { revalidate: false },
+    );
+
+    try {
+      await apiFetch(`/api/fixed-blocks/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+    } finally {
+      mutate();
+    }
   };
 
   const deleteFixedBlock = async (id: string) => {

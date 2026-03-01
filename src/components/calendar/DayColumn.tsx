@@ -89,11 +89,12 @@ export default function DayColumn({
       {blocks.map(block => {
         const isUserEvent = block.userCreated;
         const isDragging = blockDrag?.blockId === block.id;
+        const isDraggedAway = isDragging && blockDrag!.previewDayOfWeek !== dayIndex;
         const style = getBlockStyle(
-          isDragging ? blockDrag!.previewStartHour : block.startHour,
-          isDragging ? blockDrag!.previewStartMinute : block.startMinute,
-          isDragging ? blockDrag!.previewEndHour : block.endHour,
-          isDragging ? blockDrag!.previewEndMinute : block.endMinute,
+          isDragging && !isDraggedAway ? blockDrag!.previewStartHour : block.startHour,
+          isDragging && !isDraggedAway ? blockDrag!.previewStartMinute : block.startMinute,
+          isDragging && !isDraggedAway ? blockDrag!.previewEndHour : block.endHour,
+          isDragging && !isDraggedAway ? blockDrag!.previewEndMinute : block.endMinute,
         );
 
         const useInlineColor = isUserEvent && block.color;
@@ -107,7 +108,7 @@ export default function DayColumn({
                   ? 'cursor-grab'
                   : 'bg-accent/10 border-accent/25 text-accent cursor-grab'
                 : 'bg-bg-tertiary border-border-light text-text-muted'
-            } ${isDragging ? 'opacity-70 ring-2 ring-accent' : ''}`}
+            } ${isDragging ? 'ring-2 ring-accent' : ''} ${isDraggedAway ? 'opacity-25' : isDragging ? 'opacity-70' : ''}`}
             style={{
               top: style.top,
               height: style.height,
@@ -144,13 +145,14 @@ export default function DayColumn({
       {/* Scheduled slots */}
       {slots.map(slot => {
         const isDragging = dragState?.slotId === slot.id;
+        const isDraggedAway = isDragging && dragState!.previewDayOfWeek !== dayIndex;
         const isSibling = dragState?.isMerge && dragState.originalSlot.taskId === slot.taskId && dragState.slotId !== slot.id;
 
         const style = getBlockStyle(
-          isDragging ? dragState!.previewStartHour : slot.startHour,
-          isDragging ? dragState!.previewStartMinute : slot.startMinute,
-          isDragging ? dragState!.previewEndHour : slot.endHour,
-          isDragging ? dragState!.previewEndMinute : slot.endMinute,
+          isDragging && !isDraggedAway ? dragState!.previewStartHour : slot.startHour,
+          isDragging && !isDraggedAway ? dragState!.previewStartMinute : slot.startMinute,
+          isDragging && !isDraggedAway ? dragState!.previewEndHour : slot.endHour,
+          isDragging && !isDraggedAway ? dragState!.previewEndMinute : slot.endMinute,
         );
 
         const category = slot.task?.category || 'Personal';
@@ -161,8 +163,8 @@ export default function DayColumn({
           <div
             key={slot.id}
             className={`absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight cursor-grab select-none ${colorClasses} ${
-              isDragging ? 'opacity-70 ring-2 ring-accent z-30' : 'z-10'
-            } ${isSibling ? 'opacity-30 border-dashed' : ''}`}
+              isDragging ? 'ring-2 ring-accent z-30' : 'z-10'
+            } ${isDraggedAway ? 'opacity-25' : isDragging ? 'opacity-70' : ''} ${isSibling ? 'opacity-30 border-dashed' : ''}`}
             style={{
               top: style.top,
               height: style.height,

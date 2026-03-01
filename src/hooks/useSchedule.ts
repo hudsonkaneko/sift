@@ -84,11 +84,35 @@ export function useSchedule() {
       taskId?: string;
     },
   ) => {
-    await apiFetch(`/api/scheduled-slots/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(updates),
-    });
-    mutateSlots();
+    // Optimistic update: immediately reflect the change in the UI
+    mutateSlots(
+      (current) => {
+        if (!current) return current;
+        return current.map(slot => {
+          if (slot.id !== id) return slot;
+          return {
+            ...slot,
+            ...(updates.dayOfWeek !== undefined && { dayOfWeek: updates.dayOfWeek }),
+            ...(updates.startHour !== undefined && { startHour: updates.startHour }),
+            ...(updates.startMinute !== undefined && { startMinute: updates.startMinute }),
+            ...(updates.endHour !== undefined && { endHour: updates.endHour }),
+            ...(updates.endMinute !== undefined && { endMinute: updates.endMinute }),
+            ...(updates.locked !== undefined && { locked: updates.locked }),
+            ...(updates.taskId !== undefined && { taskId: updates.taskId }),
+          };
+        });
+      },
+      { revalidate: false },
+    );
+
+    try {
+      await apiFetch(`/api/scheduled-slots/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+    } finally {
+      mutateSlots();
+    }
   }, [mutateSlots]);
 
   const deleteSlot = useCallback(async (id: string) => {
@@ -102,11 +126,43 @@ export function useSchedule() {
     targetStartHour: number,
     targetStartMinute: number,
   ) => {
-    await apiFetch('/api/scheduled-slots/merge-move', {
-      method: 'POST',
-      body: JSON.stringify({ slotId, targetDay, targetStartHour, targetStartMinute, weekOf }),
-    });
-    mutateSlots();
+    // Optimistic update: move the primary slot immediately, remove siblings
+    mutateSlots(
+      (current) => {
+        if (!current) return current;
+        const primary = current.find(s => s.id === slotId);
+        if (!primary) return current;
+        const siblings = current.filter(s => s.taskId === primary.taskId);
+        let totalMin = 0;
+        for (const s of siblings) {
+          totalMin += (s.endHour * 60 + s.endMinute) - (s.startHour * 60 + s.startMinute);
+        }
+        const startMin = targetStartHour * 60 + targetStartMinute;
+        const endMin = Math.min(startMin + totalMin, 24 * 60);
+        return [
+          ...current.filter(s => s.taskId !== primary.taskId),
+          {
+            ...primary,
+            dayOfWeek: targetDay,
+            startHour: Math.floor(startMin / 60),
+            startMinute: startMin % 60,
+            endHour: Math.floor(endMin / 60),
+            endMinute: endMin % 60,
+            locked: true,
+          },
+        ];
+      },
+      { revalidate: false },
+    );
+
+    try {
+      await apiFetch('/api/scheduled-slots/merge-move', {
+        method: 'POST',
+        body: JSON.stringify({ slotId, targetDay, targetStartHour, targetStartMinute, weekOf }),
+      });
+    } finally {
+      mutateSlots();
+    }
   }, [weekOf, mutateSlots]);
 
   const isCurrentWeek = useMemo(() => {

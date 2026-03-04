@@ -8,16 +8,22 @@ export async function GET(req: Request) {
   const state = url.searchParams.get('state'); // userId
   const error = url.searchParams.get('error');
 
+  console.log('[gcal/callback] params:', { hasCode: !!code, state, error });
+
   const h = await headers();
   const proto = h.get('x-forwarded-proto') || 'https';
   const host = h.get('host') || '';
   const origin = `${proto}://${host}`;
 
+  console.log('[gcal/callback] origin:', origin);
+
   if (error || !code || !state) {
+    console.log('[gcal/callback] BAIL: missing code/state or error present');
     return NextResponse.redirect(`${origin}/dashboard?gcal=error`);
   }
 
   const redirectUri = `${origin}/api/google-calendar/callback`;
+  console.log('[gcal/callback] redirectUri for token exchange:', redirectUri);
 
   // Exchange code for tokens
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -33,10 +39,13 @@ export async function GET(req: Request) {
   });
 
   if (!tokenRes.ok) {
+    const errBody = await tokenRes.text();
+    console.log('[gcal/callback] TOKEN EXCHANGE FAILED:', tokenRes.status, errBody);
     return NextResponse.redirect(`${origin}/dashboard?gcal=error`);
   }
 
   const tokens = await tokenRes.json();
+  console.log('[gcal/callback] token exchange OK, has refresh_token:', !!tokens.refresh_token);
 
   const supabase = createServiceClient();
   const { error: dbError } = await supabase
@@ -51,8 +60,10 @@ export async function GET(req: Request) {
     }, { onConflict: 'user_id' });
 
   if (dbError) {
+    console.log('[gcal/callback] DB UPSERT FAILED:', dbError.message);
     return NextResponse.redirect(`${origin}/dashboard?gcal=error`);
   }
 
+  console.log('[gcal/callback] SUCCESS — redirecting to /dashboard?gcal=connected');
   return NextResponse.redirect(`${origin}/dashboard?gcal=connected`);
 }

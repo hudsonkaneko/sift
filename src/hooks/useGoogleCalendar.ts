@@ -10,10 +10,12 @@ export function useGoogleCalendar() {
   const { data, error, isLoading, mutate } = useSWR('/api/google-calendar/status', fetcher);
   const [syncing, setSyncing] = useState(false);
 
-  // Re-fetch status when redirected back from OAuth with ?gcal=connected
+  // Re-fetch status when redirected back from OAuth with ?gcal=connected or ?gcal=error
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('gcal') === 'connected') {
+    const gcalParam = params.get('gcal');
+    if (gcalParam) {
+      console.log('[useGoogleCalendar] detected ?gcal=' + gcalParam + ', re-fetching status...');
       mutate();
       // Clean up the query param
       const url = new URL(window.location.href);
@@ -23,6 +25,11 @@ export function useGoogleCalendar() {
   }, [mutate]);
 
   const isConnected = data?.connected ?? false;
+
+  // Debug: log whenever connection state changes
+  useEffect(() => {
+    console.log('[useGoogleCalendar] state:', { isConnected, data, error: error?.message, isLoading });
+  }, [isConnected, data, error, isLoading]);
 
   const sync = async (weekOf: string) => {
     setSyncing(true);

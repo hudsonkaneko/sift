@@ -25,11 +25,13 @@ export default function DashboardLayout({
     weekOf,
     slots,
     isCurrentWeek,
+    generating,
     navigateWeek,
     goToToday,
     updateSlot,
     deleteSlot,
     mergeMove,
+    generateSchedule,
     mutateSlots,
   } = useSchedule();
   const {
@@ -96,6 +98,8 @@ export default function DashboardLayout({
               onBlockUpdate={(id, updates) => updateFixedBlock(id, updates)}
               onBlockDelete={deleteFixedBlock}
               onAddFixedBlock={(block) => addFixedBlock({ ...block, userCreated: true })}
+              onGenerateSchedule={generateSchedule}
+              generatingSchedule={generating}
             />
           </div>
 

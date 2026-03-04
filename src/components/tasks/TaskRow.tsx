@@ -12,6 +12,7 @@ import {
   formatDeadline,
   formatTime,
 } from '@/lib/utils/format';
+import { calculatePriority, getPriorityLevel, PRIORITY_COLORS } from '@/lib/utils/priority';
 
 interface EditState {
   taskId: string;
@@ -56,6 +57,8 @@ export default function TaskRow({
   onContextMenu,
 }: TaskRowProps) {
   const colorPickerRef = useRef<HTMLDivElement | null>(null);
+  const priorityScore = calculatePriority(task);
+  const priorityLevel = getPriorityLevel(priorityScore);
   const hasChildren = subtasks.length > 0;
   const completedSubtasks = subtasks.filter(s => s.completed).length;
   const isCompleted = task.completed;
@@ -126,7 +129,7 @@ export default function TaskRow({
     <tr
       className={`border-b border-border-light transition-colors ${
         isCompleted ? 'opacity-40 hover:opacity-60' : 'hover:bg-bg-tertiary'
-      }`}
+      } ${!isCompleted ? `border-l-2 ${PRIORITY_COLORS[priorityLevel]}` : ''}`}
       onContextMenu={e => onContextMenu(e, task.id)}
     >
       {/* Checkbox / expand toggle */}

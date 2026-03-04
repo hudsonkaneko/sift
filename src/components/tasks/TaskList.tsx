@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { Task, ScheduledSlotWithTask, TaskCategory } from '@/lib/types/domain';
+import { calculatePriority } from '@/lib/utils/priority';
 import TaskRow from './TaskRow';
 
 interface EditState {
@@ -60,9 +61,12 @@ export default function TaskList({
       }
     }
 
+    const incomplete = topLevel.filter(t => !t.completed);
+    incomplete.sort((a, b) => calculatePriority(b) - calculatePriority(a));
+
     return {
       subtaskMap: sMap,
-      incompleteTopLevel: topLevel.filter(t => !t.completed),
+      incompleteTopLevel: incomplete,
       completedTopLevel: topLevel.filter(t => t.completed),
     };
   }, [tasks]);
@@ -79,6 +83,21 @@ export default function TaskList({
       return next;
     });
   }, []);
+
+  // Auto-expand parents that have children
+  useEffect(() => {
+    const parentsWithChildren = new Set<string>();
+    for (const [parentId] of subtaskMap) {
+      parentsWithChildren.add(parentId);
+    }
+    if (parentsWithChildren.size > 0) {
+      setExpandedParents(prev => {
+        const next = new Set(prev);
+        for (const id of parentsWithChildren) next.add(id);
+        return next;
+      });
+    }
+  }, [subtaskMap]);
 
   // Close context menu on outside click
   useEffect(() => {

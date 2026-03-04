@@ -81,9 +81,11 @@ export async function POST(req: Request) {
 
     const actions: string[] = [];
 
-    // 1. Add new tasks
+    // 1. Add new tasks (with subtask support)
+    let tasksAdded = 0;
+    let subtasksAdded = 0;
     for (const taskData of result.newTasks) {
-      await supabase.from('tasks').insert({
+      const { data: parentRow } = await supabase.from('tasks').insert({
         user_id: userId,
         name: taskData.name,
         category: taskData.category,
@@ -93,10 +95,32 @@ export async function POST(req: Request) {
         completed: false,
         color: taskData.color ?? null,
         parent_id: taskData.parentId ?? null,
-        urgency: 0,
-      });
+        urgency: taskData.urgency ?? 0,
+      }).select('id').single();
+      tasksAdded++;
+
+      if (parentRow && taskData.subtasks && taskData.subtasks.length > 0) {
+        for (const sub of taskData.subtasks) {
+          await supabase.from('tasks').insert({
+            user_id: userId,
+            name: sub.name,
+            category: sub.category,
+            estimated_minutes: sub.estimatedMinutes,
+            deadline: sub.deadline,
+            recurrence: sub.recurrence,
+            completed: false,
+            color: sub.color ?? null,
+            parent_id: parentRow.id,
+            urgency: sub.urgency ?? 0,
+          });
+          subtasksAdded++;
+        }
+      }
     }
-    if (result.newTasks.length > 0) actions.push(`Added ${result.newTasks.length} task(s)`);
+    if (tasksAdded > 0) {
+      const subtaskNote = subtasksAdded > 0 ? ` with ${subtasksAdded} subtask(s)` : '';
+      actions.push(`Added ${tasksAdded} task(s)${subtaskNote}`);
+    }
 
     // 2. Apply task updates
     let tasksUpdated = 0;
@@ -175,7 +199,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       message: responseText,
       followUpQuestion: result.followUpQuestion,
-      tasksAdded: result.newTasks.length,
+      tasksAdded: tasksAdded + subtasksAdded,
       blocksAdded: result.newBlocks.length,
     });
   } catch (error: unknown) {

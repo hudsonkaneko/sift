@@ -125,6 +125,8 @@ export interface ParsedTaskData {
   recurrence: RecurrenceType;
   color?: string | null;
   parentId?: string | null;
+  subtasks?: ParsedTaskData[];
+  urgency?: number;
 }
 
 export interface WeekSchedule {

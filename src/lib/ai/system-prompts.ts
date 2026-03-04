@@ -35,7 +35,7 @@ You MUST respond with a single JSON object (no markdown fences). The JSON has th
 
 {
   "message": "Friendly response to the user. Summarize what you did. Do NOT include follow-up questions here — use the followUpQuestion field instead.",
-  "newTasks": [{"name": "task name", "category": "School|Startup|Collab|Personal", "estimatedMinutes": 60, "deadline": "YYYY-MM-DD or null", "recurrence": "none|daily|weekdays|weekly"}],
+  "newTasks": [{"name": "task name", "category": "School|Startup|Collab|Personal", "estimatedMinutes": 60, "deadline": "YYYY-MM-DD or null", "recurrence": "none|daily|weekdays|weekly", "urgency": 0, "subtasks": [{"name": "subtask name", "estimatedMinutes": 30}]}],
   "taskUpdates": [{"taskName": "existing task name to match", "updates": {}}],
   "newBlocks": [{"name": "block name", "dayOfWeek": 1, "startHour": 10, "startMinute": 0, "endHour": 11, "endMinute": 0}],
   "preferenceUpdates": null or {"earliestHour": 10, "addRule": "text"},
@@ -55,7 +55,7 @@ RULES:
 - Convert relative dates to actual YYYY-MM-DD
 - Default recurrence to "none" unless user EXPLICITLY says it repeats
 
-AUTO-SPLIT: Tasks with multiple steps or 2+ hours should be split into sub-tasks automatically. Use prefixed names (e.g., "Paper: Research", "Paper: First draft"). After splitting, ask to confirm via followUpQuestion.
+AUTO-SPLIT: Tasks with multiple steps or 2+ hours should be split into subtasks. Place subtasks inside the "subtasks" array of the parent task. The parent's estimatedMinutes should be 0 (the subtasks carry the actual time). Subtasks inherit the parent's category, deadline, and recurrence unless overridden. After splitting, ask to confirm via followUpQuestion. Set "urgency" (0-100) based on how time-sensitive the task feels.
 
 PROACTIVE: After creating tasks, check for missing info (deadlines, time estimates, categories) and ask via followUpQuestion. Priority: deadline > time estimate > category > recurrence.`;
 }

@@ -47,6 +47,7 @@ const blocksFetcher = async (url: string) => {
 
 export function useSchedule() {
   const [weekOffset, setWeekOffset] = useState(0);
+  const [generating, setGenerating] = useState(false);
 
   const weekOf = useMemo(() => {
     const now = new Date();
@@ -109,6 +110,19 @@ export function useSchedule() {
     mutateSlots();
   }, [weekOf, mutateSlots]);
 
+  const generateSchedule = useCallback(async () => {
+    setGenerating(true);
+    try {
+      await apiFetch('/api/scheduled-slots/generate', {
+        method: 'POST',
+        body: JSON.stringify({ weekOf }),
+      });
+      mutateSlots();
+    } finally {
+      setGenerating(false);
+    }
+  }, [weekOf, mutateSlots]);
+
   const isCurrentWeek = useMemo(() => {
     return weekOf === getSunday(new Date());
   }, [weekOf]);
@@ -118,11 +132,13 @@ export function useSchedule() {
     slots: slots || [],
     fixedBlocks: fixedBlocks || [],
     isCurrentWeek,
+    generating,
     navigateWeek,
     goToToday,
     updateSlot,
     deleteSlot,
     mergeMove,
+    generateSchedule,
     mutateSlots,
     mutateBlocks,
   };

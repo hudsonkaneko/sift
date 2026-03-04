@@ -89,13 +89,30 @@ export async function processChatMessage(
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
 
-      const newTasks: ParsedTaskData[] = (parsed.newTasks || []).map((t: Record<string, unknown>) => ({
-        name: t.name as string,
-        category: validateCategory(t.category as string),
-        estimatedMinutes: Math.max(15, Math.round((t.estimatedMinutes as number) || 60)),
-        deadline: (t.deadline as string) || null,
-        recurrence: validateRecurrence(t.recurrence as string),
-      }));
+      const parseTask = (t: Record<string, unknown>, parentCategory?: string, parentDeadline?: string | null, parentRecurrence?: string): ParsedTaskData => {
+        const category = validateCategory((t.category as string) || parentCategory || 'Personal');
+        const deadline = (t.deadline as string) || parentDeadline || null;
+        const recurrence = validateRecurrence((t.recurrence as string) || parentRecurrence || 'none');
+        const subtasksRaw = Array.isArray(t.subtasks) ? t.subtasks as Record<string, unknown>[] : [];
+        const hasSubtasks = subtasksRaw.length > 0;
+
+        const result: ParsedTaskData = {
+          name: t.name as string,
+          category,
+          estimatedMinutes: hasSubtasks ? 0 : Math.max(15, Math.round((t.estimatedMinutes as number) || 60)),
+          deadline,
+          recurrence,
+          urgency: Math.min(100, Math.max(0, Math.round((t.urgency as number) || 0))),
+        };
+
+        if (hasSubtasks) {
+          result.subtasks = subtasksRaw.map(sub => parseTask(sub, category as string, deadline, recurrence as string));
+        }
+
+        return result;
+      };
+
+      const newTasks: ParsedTaskData[] = (parsed.newTasks || []).map((t: Record<string, unknown>) => parseTask(t));
 
       const taskUpdates: TaskUpdate[] = (parsed.taskUpdates || []).map((u: Record<string, unknown>) => {
         const updates = u.updates as Record<string, unknown> || {};

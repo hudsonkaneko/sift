@@ -63,13 +63,23 @@ export async function POST(req: Request) {
     accessToken = refreshed;
   }
 
+  // Fetch enabled calendar sources
+  const { data: sources } = await supabase
+    .from('google_calendar_sources')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('enabled', true);
+
+  // Fall back to 'primary' if no sources exist yet (first sync before calendars fetched)
+  const calendarIds = sources && sources.length > 0
+    ? sources.map(s => ({ id: s.google_calendar_id, color: s.color }))
+    : [{ id: 'primary', color: null }];
+
   // Calculate week range (Sun-Sat)
   const weekStart = new Date(weekOf + 'T00:00:00Z');
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 7);
 
-  // Fetch events from Google Calendar
-  const calendarId = tokenRow.calendar_id || 'primary';
   const params = new URLSearchParams({
     timeMin: weekStart.toISOString(),
     timeMax: weekEnd.toISOString(),
@@ -78,29 +88,29 @@ export async function POST(req: Request) {
     maxResults: '250',
   });
 
-  const eventsRes = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-
-  if (!eventsRes.ok) {
-    return NextResponse.json({ error: 'Failed to fetch Google Calendar events' }, { status: 502 });
-  }
-
-  const eventsData = await eventsRes.json();
-  const events = eventsData.items || [];
-
-  // Delete existing google-synced blocks for this date range
+  // Delete existing google-synced blocks for this date range (only for enabled calendars)
   const weekEndDate = new Date(weekEnd);
   weekEndDate.setDate(weekEndDate.getDate() - 1);
   const weekStartStr = weekStart.toISOString().split('T')[0];
   const weekEndStr = weekEndDate.toISOString().split('T')[0];
 
+  const enabledIds = calendarIds.map(c => c.id);
   await supabase
     .from('fixed_blocks')
     .delete()
     .eq('user_id', userId)
     .not('google_event_id', 'is', null)
+    .in('google_calendar_id', enabledIds)
+    .gte('specific_date', weekStartStr)
+    .lte('specific_date', weekEndStr);
+
+  // Also clean up any old blocks with null google_calendar_id (from before multi-calendar)
+  await supabase
+    .from('fixed_blocks')
+    .delete()
+    .eq('user_id', userId)
+    .not('google_event_id', 'is', null)
+    .is('google_calendar_id', null)
     .gte('specific_date', weekStartStr)
     .lte('specific_date', weekEndStr);
 
@@ -125,35 +135,45 @@ export async function POST(req: Request) {
     color: string | null;
     recurring: boolean;
     google_event_id: string;
+    google_calendar_id: string;
     specific_date: string;
   }[] = [];
 
-  for (const event of events as GoogleEvent[]) {
-    // Skip all-day events (they have .date instead of .dateTime)
-    if (!event.start.dateTime || !event.end.dateTime) continue;
-    // Skip cancelled events
-    if (event.status === 'cancelled') continue;
+  // Fetch events from each enabled calendar
+  for (const cal of calendarIds) {
+    const eventsRes = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
 
-    const start = new Date(event.start.dateTime);
-    const end = new Date(event.end.dateTime);
+    if (!eventsRes.ok) continue; // Skip calendars that fail (e.g. permission issues)
 
-    const dayOfWeek = start.getDay();
-    const specificDate = start.toISOString().split('T')[0];
+    const eventsData = await eventsRes.json();
+    const events = (eventsData.items || []) as GoogleEvent[];
 
-    blocks.push({
-      user_id: userId,
-      name: event.summary || 'Google Calendar Event',
-      day_of_week: dayOfWeek,
-      start_hour: start.getHours(),
-      start_minute: start.getMinutes(),
-      end_hour: end.getHours(),
-      end_minute: end.getMinutes(),
-      user_created: false,
-      color: null,
-      recurring: false,
-      google_event_id: event.id,
-      specific_date: specificDate,
-    });
+    for (const event of events) {
+      if (!event.start.dateTime || !event.end.dateTime) continue;
+      if (event.status === 'cancelled') continue;
+
+      const start = new Date(event.start.dateTime);
+      const end = new Date(event.end.dateTime);
+
+      blocks.push({
+        user_id: userId,
+        name: event.summary || 'Google Calendar Event',
+        day_of_week: start.getDay(),
+        start_hour: start.getHours(),
+        start_minute: start.getMinutes(),
+        end_hour: end.getHours(),
+        end_minute: end.getMinutes(),
+        user_created: false,
+        color: cal.color,
+        recurring: false,
+        google_event_id: event.id,
+        google_calendar_id: cal.id,
+        specific_date: start.toISOString().split('T')[0],
+      });
+    }
   }
 
   if (blocks.length > 0) {

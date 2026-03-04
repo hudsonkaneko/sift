@@ -1,4 +1,4 @@
-import type { Task, FixedBlock, ScheduledSlot, SchedulingPreferences } from '@/lib/types/domain';
+import type { Task, FixedBlock, ScheduledSlot, SchedulingPreferences, GoogleCalendarSource } from '@/lib/types/domain';
 
 /**
  * Map a Supabase snake_case row to a camelCase domain object.
@@ -39,7 +39,22 @@ export function mapFixedBlock(row: any): FixedBlock {
     color: row.color,
     recurring: row.recurring ?? false,
     googleEventId: row.google_event_id ?? null,
+    googleCalendarId: row.google_calendar_id ?? null,
     specificDate: row.specific_date ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function mapGoogleCalendarSource(row: any): GoogleCalendarSource {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    googleCalendarId: row.google_calendar_id,
+    name: row.name,
+    color: row.color,
+    enabled: row.enabled,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

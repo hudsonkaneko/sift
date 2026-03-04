@@ -42,7 +42,19 @@ export interface FixedBlock {
   color: string | null;
   recurring: boolean;
   googleEventId: string | null;
+  googleCalendarId: string | null;
   specificDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GoogleCalendarSource {
+  id: string;
+  userId: string;
+  googleCalendarId: string;
+  name: string;
+  color: string | null;
+  enabled: boolean;
   createdAt: string;
   updatedAt: string;
 }

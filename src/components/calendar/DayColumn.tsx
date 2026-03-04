@@ -99,17 +99,17 @@ export default function DayColumn({
           isDragging && !isDraggedAway ? blockDrag!.previewEndMinute : block.endMinute,
         );
 
-        const useInlineColor = isUserEvent && block.color;
+        const useInlineColor = !!block.color;
 
         return (
           <div
             key={block.id}
             className={`absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight select-none ${
-              isUserEvent
-                ? useInlineColor
-                  ? 'cursor-grab'
-                  : 'bg-accent/10 border-accent/25 text-accent cursor-grab'
-                : 'bg-bg-tertiary border-border-light text-text-muted'
+              useInlineColor
+                ? isUserEvent ? 'cursor-grab' : ''
+                : isUserEvent
+                  ? 'bg-accent/10 border-accent/25 text-accent cursor-grab'
+                  : 'bg-bg-tertiary border-border-light text-text-muted'
             } ${isDragging ? 'opacity-50 ring-2 ring-accent' : ''} ${isDraggedAway ? 'opacity-20 border-dashed' : ''}`}
             style={{
               top: style.top,

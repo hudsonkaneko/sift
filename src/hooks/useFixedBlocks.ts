@@ -11,7 +11,7 @@ export function useFixedBlocks(weekOf?: string) {
   const key = weekOf ? `/api/fixed-blocks?weekOf=${weekOf}` : '/api/fixed-blocks';
   const { data: fixedBlocks, error, isLoading, mutate } = useSWR(key, fetcher);
 
-  const addFixedBlock = async (block: Omit<FixedBlock, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'googleEventId' | 'specificDate'>) => {
+  const addFixedBlock = async (block: Omit<FixedBlock, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'googleEventId' | 'googleCalendarId' | 'specificDate'>) => {
     await apiFetch('/api/fixed-blocks', {
       method: 'POST',
       body: JSON.stringify(block),

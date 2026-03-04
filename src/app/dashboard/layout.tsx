@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
 import TaskList from '@/components/tasks/TaskList';
 import CalendarView from '@/components/calendar/CalendarView';
+import CalendarSourcesSidebar from '@/components/calendar/CalendarSourcesSidebar';
 import SettingsPanel from '@/components/settings/SettingsPanel';
 import { useTasks } from '@/hooks/useTasks';
 import { usePreferences } from '@/hooks/usePreferences';
@@ -12,6 +13,7 @@ import { useFixedBlocks } from '@/hooks/useFixedBlocks';
 import { useSchedule } from '@/hooks/useSchedule';
 import { useChat } from '@/hooks/useChat';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
+import { useCalendarSources } from '@/hooks/useCalendarSources';
 
 export default function DashboardLayout({
   children,
@@ -36,6 +38,7 @@ export default function DashboardLayout({
   } = useSchedule();
   const { fixedBlocks, addFixedBlock, updateFixedBlock, deleteFixedBlock, mutate: mutateBlocks } = useFixedBlocks(weekOf);
   const gcal = useGoogleCalendar();
+  const { sources, visibility, toggleFixedBlocks, toggleGoogleCalendar, isGoogleCalendarVisible, mutateSources } = useCalendarSources(gcal.isConnected);
   const {
     sessions,
     activeSessionId,
@@ -63,6 +66,33 @@ export default function DashboardLayout({
   useEffect(() => {
     syncGcal();
   }, [syncGcal]);
+
+  // Fetch calendar sources when gcal connects
+  useEffect(() => {
+    if (gcal.isConnected) {
+      mutateSources();
+    }
+  }, [gcal.isConnected, mutateSources]);
+
+  // Filter fixed blocks by visibility state
+  const filteredBlocks = useMemo(() => {
+    if (!fixedBlocks) return [];
+    return fixedBlocks.filter(block => {
+      // User-created blocks: controlled by fixedBlocks toggle
+      if (block.userCreated) {
+        return visibility.fixedBlocks;
+      }
+      // Google Calendar blocks: controlled by their calendar toggle
+      if (block.googleCalendarId) {
+        return isGoogleCalendarVisible(block.googleCalendarId);
+      }
+      // Legacy google blocks without calendar id: show if fixedBlocks visible
+      if (block.googleEventId) {
+        return visibility.fixedBlocks;
+      }
+      return true;
+    });
+  }, [fixedBlocks, visibility.fixedBlocks, isGoogleCalendarVisible]);
 
   // Auto-load first session messages
   useEffect(() => {
@@ -98,24 +128,33 @@ export default function DashboardLayout({
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col min-w-0 bg-bg-secondary">
-          {/* Calendar view (top) */}
-          <div className="flex-1 min-h-0">
-            <CalendarView
-              weekOf={weekOf}
-              slots={slots}
-              fixedBlocks={fixedBlocks}
-              tasks={tasks}
-              isCurrentWeek={isCurrentWeek}
-              onNavigateWeek={navigateWeek}
-              onGoToToday={goToToday}
-              onSlotUpdate={updateSlot}
-              onSlotDelete={deleteSlot}
-              onMergeMove={mergeMove}
-              onBlockUpdate={(id, updates) => updateFixedBlock(id, updates)}
-              onBlockDelete={deleteFixedBlock}
-              onAddFixedBlock={(block) => addFixedBlock({ ...block, userCreated: true })}
-              onGenerateSchedule={generateSchedule}
-              generatingSchedule={generating}
+          {/* Calendar + right sidebar row */}
+          <div className="flex-1 min-h-0 flex">
+            <div className="flex-1 min-w-0">
+              <CalendarView
+                weekOf={weekOf}
+                slots={slots}
+                fixedBlocks={filteredBlocks}
+                tasks={tasks}
+                isCurrentWeek={isCurrentWeek}
+                onNavigateWeek={navigateWeek}
+                onGoToToday={goToToday}
+                onSlotUpdate={updateSlot}
+                onSlotDelete={deleteSlot}
+                onMergeMove={mergeMove}
+                onBlockUpdate={(id, updates) => updateFixedBlock(id, updates)}
+                onBlockDelete={deleteFixedBlock}
+                onAddFixedBlock={(block) => addFixedBlock({ ...block, userCreated: true })}
+                onGenerateSchedule={generateSchedule}
+                generatingSchedule={generating}
+              />
+            </div>
+            <CalendarSourcesSidebar
+              sources={sources}
+              visibility={visibility}
+              onToggleFixedBlocks={toggleFixedBlocks}
+              onToggleGoogleCalendar={toggleGoogleCalendar}
+              hasGoogleCalendar={gcal.isConnected}
             />
           </div>
 
@@ -147,10 +186,12 @@ export default function DashboardLayout({
             onSync: async () => {
               await gcal.sync(weekOf);
               mutateBlocks();
+              mutateSources();
             },
             onDisconnect: async () => {
               await gcal.disconnect();
               mutateBlocks();
+              mutateSources();
             },
           }}
         />

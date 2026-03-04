@@ -15,6 +15,12 @@ export async function POST() {
     .eq('user_id', userId)
     .not('google_event_id', 'is', null);
 
+  // Delete calendar sources
+  await supabase
+    .from('google_calendar_sources')
+    .delete()
+    .eq('user_id', userId);
+
   // Delete token
   await supabase
     .from('google_calendar_tokens')

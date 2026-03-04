@@ -110,13 +110,15 @@ export async function POST(req: Request) {
 
   // Sort tasks by priority: deadline proximity + urgency
   const now = new Date();
-  now.setHours(0, 0, 0, 0);
+  const todayMidnight = new Date(now);
+  todayMidnight.setHours(0, 0, 0, 0);
+  const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
 
   function taskPriority(t: { deadline: string | null; urgency: number; estimated_minutes: number }): number {
     let score = t.urgency ?? 0;
     if (t.deadline) {
       const deadlineDate = new Date(t.deadline + 'T00:00:00');
-      const diffDays = Math.floor((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const diffDays = Math.floor((deadlineDate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
       if (diffDays < 0) score += 100;
       else if (diffDays === 0) score += 80;
       else if (diffDays === 1) score += 50;
@@ -156,7 +158,7 @@ export async function POST(req: Request) {
   const weekOfDate = new Date(weekOf + 'T00:00:00');
   const weekOfSunday = new Date(weekOfDate);
   weekOfSunday.setDate(weekOfSunday.getDate() - weekOfSunday.getDay());
-  const todaySunday = new Date(now);
+  const todaySunday = new Date(todayMidnight);
   todaySunday.setDate(todaySunday.getDate() - todaySunday.getDay());
   const isCurrentWeek = weekOfSunday.getTime() === todaySunday.getTime();
 
@@ -196,7 +198,10 @@ export async function POST(req: Request) {
       if (remaining <= 0) break;
 
       const occupied = occupiedPerDay.get(day) || [];
-      let gaps = findGaps(occupied, dayStart, dayEnd, minBlockMinutes);
+      const effectiveDayStart = (isCurrentWeek && day === todayDayOfWeek)
+        ? Math.max(dayStart, Math.ceil(currentTimeMinutes / 15) * 15)
+        : dayStart;
+      let gaps = findGaps(occupied, effectiveDayStart, dayEnd, minBlockMinutes);
 
       // Apply morning/evening preference for gap ordering
       if (!preferMornings && preferEvenings) {

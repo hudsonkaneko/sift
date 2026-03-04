@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import type { ScheduledSlotWithTask, FixedBlock } from '@/lib/types/domain';
-import { HOUR_HEIGHT, SNAP_MINUTES, START_HOUR, END_HOUR, GRID_PAD_TOP, snapMinutes } from './constants';
+import { HOUR_HEIGHT, SNAP_MINUTES, START_HOUR, END_HOUR, GRID_PAD_TOP, DAY_INDICES, snapMinutes } from './constants';
 
 // ─── Drag state types ───
 
@@ -11,7 +11,6 @@ export interface SlotDragState {
   mode: 'move' | 'resize-bottom';
   originalSlot: ScheduledSlotWithTask;
   offsetY: number;
-  currentColIndex: number;
   previewDayOfWeek: number;
   previewStartHour: number;
   previewStartMinute: number;
@@ -26,7 +25,6 @@ export interface BlockDragState {
   mode: 'move' | 'resize-bottom';
   originalBlock: FixedBlock;
   offsetY: number;
-  currentColIndex: number;
   previewDayOfWeek: number;
   previewStartHour: number;
   previewStartMinute: number;
@@ -85,23 +83,43 @@ export function useDragDrop({
 
   // ─── Helpers ───
 
-  const findColumnIndex = useCallback((clientX: number): number => {
+  // Find which day column the cursor is over. Falls back to nearest column edge.
+  const findDayOfWeek = useCallback((clientX: number, fallbackDay: number): number => {
     const cols = columnRefs.current;
-    if (!cols) return 0;
-    for (let i = 0; i < cols.length; i++) {
-      const col = cols[i];
+    if (!cols) return fallbackDay;
+
+    // Direct hit
+    for (const dayIdx of DAY_INDICES) {
+      const col = cols[dayIdx];
       if (!col) continue;
       const rect = col.getBoundingClientRect();
-      if (clientX >= rect.left && clientX <= rect.right) return i;
+      if (clientX >= rect.left && clientX <= rect.right) return dayIdx;
     }
-    return 0;
+
+    // Nearest column by center distance
+    let nearest = fallbackDay;
+    let minDist = Infinity;
+    for (const dayIdx of DAY_INDICES) {
+      const col = cols[dayIdx];
+      if (!col) continue;
+      const rect = col.getBoundingClientRect();
+      const center = (rect.left + rect.right) / 2;
+      const dist = Math.abs(clientX - center);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = dayIdx;
+      }
+    }
+    return nearest;
   }, [columnRefs]);
 
-  const getRelativeY = useCallback((clientY: number, colIndex: number): number => {
-    const col = columnRefs.current?.[colIndex];
+  // Get the Y offset from the top of the grid, accounting for parent scroll
+  const getRelativeY = useCallback((clientY: number, dayIdx: number): number => {
+    const col = columnRefs.current?.[dayIdx];
     if (!col) return 0;
     const rect = col.getBoundingClientRect();
-    return clientY - rect.top + col.scrollTop;
+    // rect.top already accounts for parent scroll since getBoundingClientRect is viewport-relative
+    return clientY - rect.top;
   }, [columnRefs]);
 
   // ─── Slot drag ───
@@ -114,8 +132,8 @@ export function useDragDrop({
     e.preventDefault();
     e.stopPropagation();
 
-    const colIndex = findColumnIndex(e.clientX);
-    const relY = getRelativeY(e.clientY, colIndex);
+    const day = findDayOfWeek(e.clientX, slot.dayOfWeek);
+    const relY = getRelativeY(e.clientY, day);
     const slotTop = ((slot.startHour - START_HOUR) + slot.startMinute / 60) * HOUR_HEIGHT + GRID_PAD_TOP;
     const offsetY = mode === 'move' ? relY - slotTop : 0;
 
@@ -136,7 +154,6 @@ export function useDragDrop({
       mode,
       originalSlot: slot,
       offsetY,
-      currentColIndex: colIndex,
       previewDayOfWeek: slot.dayOfWeek,
       previewStartHour: slot.startHour,
       previewStartMinute: slot.startMinute,
@@ -152,8 +169,8 @@ export function useDragDrop({
       const ds = dragRef.current;
       if (!ds) return;
 
-      const ci = findColumnIndex(ev.clientX);
-      const ry = getRelativeY(ev.clientY, ci);
+      const targetDay = findDayOfWeek(ev.clientX, ds.previewDayOfWeek);
+      const ry = getRelativeY(ev.clientY, targetDay);
 
       if (ds.mode === 'move') {
         const topPx = ry - ds.offsetY;
@@ -165,8 +182,7 @@ export function useDragDrop({
 
         setDragState(prev => prev ? {
           ...prev,
-          currentColIndex: ci,
-          previewDayOfWeek: ci,
+          previewDayOfWeek: targetDay,
           previewStartHour: Math.floor(startMin / 60),
           previewStartMinute: startMin % 60,
           previewEndHour: Math.floor(endMin / 60),
@@ -218,7 +234,7 @@ export function useDragDrop({
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [slots, findColumnIndex, getRelativeY, onSlotUpdate, onMergeMove]);
+  }, [slots, findDayOfWeek, getRelativeY, onSlotUpdate, onMergeMove]);
 
   // ─── Block drag ───
 
@@ -230,8 +246,8 @@ export function useDragDrop({
     e.preventDefault();
     e.stopPropagation();
 
-    const colIndex = findColumnIndex(e.clientX);
-    const relY = getRelativeY(e.clientY, colIndex);
+    const day = findDayOfWeek(e.clientX, block.dayOfWeek);
+    const relY = getRelativeY(e.clientY, day);
     const blockTop = ((block.startHour - START_HOUR) + block.startMinute / 60) * HOUR_HEIGHT + GRID_PAD_TOP;
     const offsetY = mode === 'move' ? relY - blockTop : 0;
 
@@ -240,7 +256,6 @@ export function useDragDrop({
       mode,
       originalBlock: block,
       offsetY,
-      currentColIndex: colIndex,
       previewDayOfWeek: block.dayOfWeek,
       previewStartHour: block.startHour,
       previewStartMinute: block.startMinute,
@@ -254,8 +269,8 @@ export function useDragDrop({
       const bd = blockDragRef.current;
       if (!bd) return;
 
-      const ci = findColumnIndex(ev.clientX);
-      const ry = getRelativeY(ev.clientY, ci);
+      const targetDay = findDayOfWeek(ev.clientX, bd.previewDayOfWeek);
+      const ry = getRelativeY(ev.clientY, targetDay);
 
       if (bd.mode === 'move') {
         const topPx = ry - bd.offsetY;
@@ -267,8 +282,7 @@ export function useDragDrop({
 
         setBlockDrag(prev => prev ? {
           ...prev,
-          currentColIndex: ci,
-          previewDayOfWeek: ci,
+          previewDayOfWeek: targetDay,
           previewStartHour: Math.floor(startMin / 60),
           previewStartMinute: startMin % 60,
           previewEndHour: Math.floor(endMin / 60),
@@ -315,7 +329,7 @@ export function useDragDrop({
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [findColumnIndex, getRelativeY, onBlockUpdate]);
+  }, [findDayOfWeek, getRelativeY, onBlockUpdate]);
 
   // ─── Create drag ───
 

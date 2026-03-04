@@ -85,12 +85,29 @@ export function useSchedule() {
       taskId?: string;
     },
   ) => {
-    await apiFetch(`/api/scheduled-slots/${id}`, {
+    // Optimistic update: immediately move the slot in the UI
+    const optimisticSlots = (slots || []).map(s => {
+      if (s.id !== id) return s;
+      return {
+        ...s,
+        ...(updates.dayOfWeek !== undefined && { dayOfWeek: updates.dayOfWeek }),
+        ...(updates.startHour !== undefined && { startHour: updates.startHour }),
+        ...(updates.startMinute !== undefined && { startMinute: updates.startMinute }),
+        ...(updates.endHour !== undefined && { endHour: updates.endHour }),
+        ...(updates.endMinute !== undefined && { endMinute: updates.endMinute }),
+        ...(updates.locked !== undefined && { locked: updates.locked }),
+        // Auto-lock when position changes (matches server behavior)
+        ...((updates.dayOfWeek !== undefined || updates.startHour !== undefined || updates.startMinute !== undefined) && { locked: true }),
+      };
+    });
+    mutateSlots(optimisticSlots, false);
+
+    // Fire API call in background, then revalidate
+    apiFetch(`/api/scheduled-slots/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
-    });
-    mutateSlots();
-  }, [mutateSlots]);
+    }).then(() => mutateSlots());
+  }, [slots, mutateSlots]);
 
   const deleteSlot = useCallback(async (id: string) => {
     await apiFetch(`/api/scheduled-slots/${id}`, { method: 'DELETE' });

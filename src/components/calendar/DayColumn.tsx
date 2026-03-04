@@ -153,14 +153,13 @@ export default function DayColumn({
       {slots.map(slot => {
         const isDragging = dragState?.slotId === slot.id;
         const isSibling = dragState?.isMerge && dragState.originalSlot.taskId === slot.taskId && dragState.slotId !== slot.id;
-        // When dragging to a different column, dim the original
-        const isDraggedAway = isDragging && dragState!.previewDayOfWeek !== dayIndex;
 
+        // During drag, always show original at its original position, dimmed
         const style = getBlockStyle(
-          isDragging && !isDraggedAway ? dragState!.previewStartHour : slot.startHour,
-          isDragging && !isDraggedAway ? dragState!.previewStartMinute : slot.startMinute,
-          isDragging && !isDraggedAway ? dragState!.previewEndHour : slot.endHour,
-          isDragging && !isDraggedAway ? dragState!.previewEndMinute : slot.endMinute,
+          slot.startHour,
+          slot.startMinute,
+          slot.endHour,
+          slot.endMinute,
         );
 
         const category = slot.task?.category || 'Personal';
@@ -171,8 +170,8 @@ export default function DayColumn({
           <div
             key={slot.id}
             className={`absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight cursor-grab select-none ${colorClasses} ${
-              isDragging && !isDraggedAway ? 'opacity-50 ring-2 ring-accent z-30' : 'z-10'
-            } ${isDraggedAway ? 'opacity-20 border-dashed' : ''} ${isSibling ? 'opacity-30 border-dashed' : ''}`}
+              isDragging ? 'opacity-20 border-dashed z-10' : 'z-10'
+            } ${isSibling ? 'opacity-30 border-dashed' : ''}`}
             style={{
               top: style.top,
               height: style.height,
@@ -209,10 +208,10 @@ export default function DayColumn({
         );
       })}
 
-      {/* Drag ghost preview (slot dragged to different column) */}
-      {dragState && dragState.previewDayOfWeek === dayIndex && dragState.originalSlot.dayOfWeek !== dayIndex && (
+      {/* Slot drag preview — shows on whichever day the cursor is over */}
+      {dragState && dragState.previewDayOfWeek === dayIndex && (
         <div
-          className={`absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight opacity-80 ring-1 ring-accent z-20 pointer-events-none ${
+          className={`absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight ring-2 ring-accent z-30 pointer-events-none ${
             CATEGORY_COLORS[dragState.originalSlot.task?.category || 'Personal']
           }`}
           style={getBlockStyle(
@@ -222,14 +221,19 @@ export default function DayColumn({
             dragState.previewEndMinute,
           )}
         >
-          <div className="font-medium truncate">{dragState.originalSlot.task?.name || 'Task'}</div>
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+              CATEGORY_DOT_COLORS[dragState.originalSlot.task?.category || 'Personal']
+            }`} />
+            <span className="font-medium truncate">{dragState.originalSlot.task?.name || 'Task'}</span>
+          </div>
         </div>
       )}
 
-      {/* Block drag ghost preview */}
-      {blockDrag && blockDrag.previewDayOfWeek === dayIndex && blockDrag.originalBlock.dayOfWeek !== dayIndex && (
+      {/* Block drag preview — shows on whichever day the cursor is over */}
+      {blockDrag && blockDrag.previewDayOfWeek === dayIndex && (
         <div
-          className="absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight opacity-80 ring-1 ring-accent z-20 pointer-events-none bg-accent/10 border-accent/25 text-accent"
+          className="absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight ring-2 ring-accent z-30 pointer-events-none bg-accent/10 border-accent/25 text-accent"
           style={getBlockStyle(
             blockDrag.previewStartHour,
             blockDrag.previewStartMinute,

@@ -151,12 +151,25 @@ export async function POST(req: Request) {
     });
   }
 
-  // Determine day order based on preferences
+  // Determine day order based on preferences, skipping past days for current week
+  const todayDayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ...
+  const weekOfDate = new Date(weekOf + 'T00:00:00');
+  const weekOfSunday = new Date(weekOfDate);
+  weekOfSunday.setDate(weekOfSunday.getDate() - weekOfSunday.getDay());
+  const todaySunday = new Date(now);
+  todaySunday.setDate(todaySunday.getDate() - todaySunday.getDay());
+  const isCurrentWeek = weekOfSunday.getTime() === todaySunday.getTime();
+
   let dayOrder: number[];
   if (avoidWeekends) {
     dayOrder = [1, 2, 3, 4, 5]; // Mon-Fri
   } else {
     dayOrder = [1, 2, 3, 4, 5, 6, 0]; // Weekdays first, then weekend
+  }
+
+  // Only schedule on today and future days if generating for the current week
+  if (isCurrentWeek) {
+    dayOrder = dayOrder.filter(d => d >= todayDayOfWeek);
   }
 
   const dayStart = earliestHour * 60;

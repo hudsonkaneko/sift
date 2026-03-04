@@ -34,12 +34,16 @@ export function useGoogleCalendar() {
   }, [hasAccounts, accounts.length, error, isLoading]);
 
   const sync = async (weekOf: string) => {
+    console.log(`[useGoogleCalendar] sync called with weekOf=${weekOf}`);
     setSyncing(true);
     try {
-      await apiFetch<{ synced: number }>('/api/google-calendar/sync', {
+      const result = await apiFetch<{ synced: number }>('/api/google-calendar/sync', {
         method: 'POST',
         body: JSON.stringify({ weekOf }),
       });
+      console.log('[useGoogleCalendar] sync result:', result);
+    } catch (e) {
+      console.error('[useGoogleCalendar] sync error:', e);
     } finally {
       setSyncing(false);
     }

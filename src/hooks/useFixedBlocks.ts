@@ -5,7 +5,13 @@ import { apiFetch } from '@/lib/utils/api';
 import { mapFixedBlock } from '@/lib/utils/db';
 import type { FixedBlock } from '@/lib/types/domain';
 
-const fetcher = (url: string) => apiFetch<unknown[]>(url).then(rows => rows.map(mapFixedBlock));
+const fetcher = (url: string) => apiFetch<unknown[]>(url).then(rows => {
+  const blocks = rows.map(mapFixedBlock);
+  const googleBlocks = blocks.filter(b => b.googleEventId);
+  const userBlocks = blocks.filter(b => b.userCreated);
+  console.log(`[useFixedBlocks] fetched ${blocks.length} blocks (${googleBlocks.length} google, ${userBlocks.length} user-created) from ${url}`);
+  return blocks;
+});
 
 export function useFixedBlocks(weekOf?: string) {
   const key = weekOf ? `/api/fixed-blocks?weekOf=${weekOf}` : '/api/fixed-blocks';

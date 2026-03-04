@@ -66,8 +66,8 @@ export default function SettingsPanel({ preferences, onUpdate, onClose, gcal }: 
               <div className="mt-2 space-y-2">
                 {gcal.accounts.map(account => (
                   <div key={account.id} className="flex items-center gap-2">
-                    <span className="text-sm text-text-primary truncate flex-1" title={account.googleEmail}>
-                      {account.googleEmail}
+                    <span className="text-sm text-text-primary truncate flex-1" title={account.googleEmail || 'Unknown account'}>
+                      {account.googleEmail || 'Unknown account'}
                     </span>
                     <button
                       onClick={() => gcal.onDisconnect(account.googleEmail)}

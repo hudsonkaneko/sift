@@ -7,17 +7,30 @@ export async function GET() {
   const [userId, errorResponse] = await requireAuth();
   if (!userId) return errorResponse!;
 
+  console.log(`[gcal/calendars] === START === userId=${userId}`);
+
   const supabase = createServiceClient();
 
   // Get ALL token rows for this user
-  const { data: tokenRows } = await supabase
+  const { data: tokenRows, error: tokenError } = await supabase
     .from('google_calendar_tokens')
     .select('*')
     .eq('user_id', userId);
 
+  if (tokenError) {
+    console.error('[gcal/calendars] ERROR fetching tokens:', tokenError);
+  }
+
   if (!tokenRows || tokenRows.length === 0) {
+    console.log('[gcal/calendars] no token rows found');
     return NextResponse.json({ error: 'Google Calendar not connected' }, { status: 400 });
   }
+
+  console.log(`[gcal/calendars] found ${tokenRows.length} token row(s):`, tokenRows.map(t => ({
+    id: t.id,
+    google_email: t.google_email,
+    token_expiry: t.token_expiry,
+  })));
 
   const now = new Date().toISOString();
 
@@ -27,13 +40,18 @@ export async function GET() {
     backgroundColor?: string;
     selected?: boolean;
     accessRole?: string;
+    primary?: boolean;
   }
 
   // Process each account
   for (const tokenRow of tokenRows) {
+    console.log(`[gcal/calendars] --- processing account: ${tokenRow.google_email ?? 'NULL email'}`);
+
     // Refresh token if expired
     let accessToken = tokenRow.access_token;
-    if (new Date(tokenRow.token_expiry) <= new Date()) {
+    const isExpired = new Date(tokenRow.token_expiry) <= new Date();
+    if (isExpired) {
+      console.log('[gcal/calendars] token expired, refreshing...');
       const res = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -45,7 +63,8 @@ export async function GET() {
         }),
       });
       if (!res.ok) {
-        console.log(`[gcal/calendars] failed to refresh token for ${tokenRow.google_email}`);
+        const errBody = await res.text();
+        console.error(`[gcal/calendars] SKIP account — token refresh failed (${res.status}):`, errBody);
         continue;
       }
       const data = await res.json();
@@ -58,53 +77,73 @@ export async function GET() {
           updated_at: now,
         })
         .eq('id', tokenRow.id);
+      console.log('[gcal/calendars] token refreshed successfully');
     }
 
-    // Backfill google_email if missing (pre-migration token rows)
-    if (!tokenRow.google_email) {
-      try {
-        const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (userinfoRes.ok) {
-          const userinfo = await userinfoRes.json();
-          if (userinfo.email) {
-            tokenRow.google_email = userinfo.email;
-            await supabase
-              .from('google_calendar_tokens')
-              .update({ google_email: userinfo.email, updated_at: now })
-              .eq('id', tokenRow.id);
-            // Also backfill any existing sources that have null google_email
-            await supabase
-              .from('google_calendar_sources')
-              .update({ google_email: userinfo.email, updated_at: now })
-              .eq('user_id', userId)
-              .is('google_email', null);
-            console.log(`[gcal/calendars] backfilled google_email: ${userinfo.email}`);
-          }
-        }
-      } catch (e) {
-        console.log('[gcal/calendars] failed to backfill google_email:', e);
-      }
-    }
-
-    // Fetch calendar list from Google
+    // Fetch calendar list from Google FIRST (needed for both backfill and upsert)
+    console.log('[gcal/calendars] fetching calendarList from Google...');
     const listRes = await fetch(
       'https://www.googleapis.com/calendar/v3/users/me/calendarList',
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
 
     if (!listRes.ok) {
-      console.log(`[gcal/calendars] failed to fetch calendar list for ${tokenRow.google_email}`);
+      const errBody = await listRes.text();
+      console.error(`[gcal/calendars] SKIP account — calendarList failed (${listRes.status}):`, errBody);
       continue;
     }
 
     const listData = await listRes.json();
     const calendars = (listData.items || []) as GCalListEntry[];
+    console.log(`[gcal/calendars] got ${calendars.length} calendar(s):`, calendars.map(c => ({
+      id: c.id,
+      summary: c.summary,
+      primary: c.primary,
+      accessRole: c.accessRole,
+    })));
 
-    // Upsert each calendar into google_calendar_sources with google_email
+    // Backfill google_email if missing — extract from primary calendar ID
+    if (!tokenRow.google_email) {
+      const primaryCal = calendars.find(c => c.primary);
+      const primaryEmail = primaryCal?.id;
+      console.log('[gcal/calendars] google_email is NULL, primary calendar:', primaryCal ? { id: primaryCal.id, summary: primaryCal.summary } : 'NOT FOUND');
+
+      if (primaryEmail) {
+        tokenRow.google_email = primaryEmail;
+        await supabase
+          .from('google_calendar_tokens')
+          .update({ google_email: primaryEmail, updated_at: now })
+          .eq('id', tokenRow.id);
+        // Backfill existing sources that have null google_email
+        await supabase
+          .from('google_calendar_sources')
+          .update({ google_email: primaryEmail, updated_at: now })
+          .eq('user_id', userId)
+          .is('google_email', null);
+        console.log(`[gcal/calendars] backfilled google_email: ${primaryEmail}`);
+      } else {
+        // Can't determine email — clean up orphan sources and skip this account
+        await supabase
+          .from('google_calendar_sources')
+          .delete()
+          .eq('user_id', userId)
+          .is('google_email', null);
+        console.error('[gcal/calendars] SKIP account — no primary calendar found');
+        continue;
+      }
+    }
+
+    // Delete any remaining NULL-email orphan sources for this user
+    await supabase
+      .from('google_calendar_sources')
+      .delete()
+      .eq('user_id', userId)
+      .is('google_email', null);
+
+    // Upsert each calendar into google_calendar_sources (email is guaranteed non-null)
+    console.log(`[gcal/calendars] upserting ${calendars.length} sources for ${tokenRow.google_email}`);
     for (const cal of calendars) {
-      await supabase
+      const { error: upsertError } = await supabase
         .from('google_calendar_sources')
         .upsert(
           {
@@ -117,16 +156,24 @@ export async function GET() {
           },
           { onConflict: 'user_id,google_calendar_id,google_email', ignoreDuplicates: false },
         );
+      if (upsertError) {
+        console.error(`[gcal/calendars] ERROR upserting source ${cal.id}:`, upsertError);
+      }
     }
   }
 
   // Return all sources for this user
-  const { data: sources } = await supabase
+  const { data: sources, error: sourcesError } = await supabase
     .from('google_calendar_sources')
     .select('*')
     .eq('user_id', userId)
     .order('google_email')
     .order('name');
 
+  if (sourcesError) {
+    console.error('[gcal/calendars] ERROR fetching final sources:', sourcesError);
+  }
+
+  console.log(`[gcal/calendars] === DONE === returning ${sources?.length ?? 0} source(s)`);
   return NextResponse.json((sources || []).map(mapGoogleCalendarSource));
 }

@@ -57,9 +57,12 @@ export default function DashboardLayout({
   const lastSyncKey = useRef<string | null>(null);
   const syncGcal = useCallback(async () => {
     const key = `${weekOf}:${gcal.hasAccounts}:${gcal.accounts.length}`;
+    console.log(`[dashboard] syncGcal check: key=${key}, lastKey=${lastSyncKey.current}, hasAccounts=${gcal.hasAccounts}, weekOf=${weekOf}`);
     if (gcal.hasAccounts && weekOf && lastSyncKey.current !== key) {
       lastSyncKey.current = key;
+      console.log('[dashboard] triggering auto-sync...');
       await gcal.sync(weekOf);
+      console.log('[dashboard] auto-sync done, mutating blocks...');
       mutateBlocks();
     }
   }, [gcal.hasAccounts, gcal.accounts.length, weekOf, gcal.sync, mutateBlocks]);
@@ -78,7 +81,7 @@ export default function DashboardLayout({
   // Filter fixed blocks by visibility state
   const filteredBlocks = useMemo(() => {
     if (!fixedBlocks) return [];
-    return fixedBlocks.filter(block => {
+    const result = fixedBlocks.filter(block => {
       // User-created blocks: controlled by fixedBlocks toggle
       if (block.userCreated) {
         return visibility.fixedBlocks;
@@ -93,6 +96,8 @@ export default function DashboardLayout({
       }
       return true;
     });
+    console.log(`[dashboard] filteredBlocks: ${result.length}/${fixedBlocks.length} blocks visible (google visible: ${result.filter(b => b.googleEventId).length})`);
+    return result;
   }, [fixedBlocks, visibility.fixedBlocks, isGoogleCalendarVisible]);
 
   // Auto-load first session messages

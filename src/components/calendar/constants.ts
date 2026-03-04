@@ -2,7 +2,7 @@ import type { TaskCategory } from '@/lib/types/domain';
 
 export const HOUR_HEIGHT = 56;
 export const SNAP_MINUTES = 15;
-export const START_HOUR = 9;
+export const START_HOUR = 0;
 export const END_HOUR = 24;
 export const GRID_PAD_TOP = 8;
 export const MIN_BLOCK_PX = 14;

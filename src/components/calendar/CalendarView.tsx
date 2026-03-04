@@ -76,6 +76,14 @@ export default function CalendarView({
   const [blockMenu, setBlockMenu] = useState<BlockMenuState | null>(null);
   const [swapMenu, setSwapMenu] = useState<SwapMenuState | null>(null);
   const columnRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll to 8am on mount
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 8 * HOUR_HEIGHT;
+    }
+  }, []);
 
   // Update current time every 30 seconds
   useEffect(() => {
@@ -304,7 +312,7 @@ export default function CalendarView({
       </div>
 
       {/* Grid */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" ref={scrollRef}>
         <div className="flex" style={{ minHeight: gridHeight }}>
           <TimeColumn
             now={now}

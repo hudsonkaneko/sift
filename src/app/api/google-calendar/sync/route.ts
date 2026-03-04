@@ -259,8 +259,22 @@ export async function POST(req: Request) {
           continue;
         }
 
-        const start = new Date(event.start.dateTime);
-        const end = new Date(event.end.dateTime);
+        // Parse local time directly from the ISO string to avoid
+        // server timezone conversion (Vercel runs in UTC)
+        // Format: "2026-03-04T10:00:00-08:00" → extract hours/minutes from T portion
+        const startMatch = event.start.dateTime.match(/T(\d{2}):(\d{2})/);
+        const endMatch = event.end.dateTime.match(/T(\d{2}):(\d{2})/);
+        if (!startMatch || !endMatch) continue;
+
+        const startHour = parseInt(startMatch[1]);
+        const startMinute = parseInt(startMatch[2]);
+        const endHour = parseInt(endMatch[1]);
+        const endMinute = parseInt(endMatch[2]);
+        // Extract local date (YYYY-MM-DD) before the T
+        const specificDate = event.start.dateTime.split('T')[0];
+        // Day of week from local date
+        const [y, m, d] = specificDate.split('-').map(Number);
+        const dayOfWeek = new Date(y, m - 1, d).getDay();
 
         // Deduplicate by (google_event_id, google_calendar_id) — same event
         // can appear via multiple accounts if they share a calendar
@@ -268,17 +282,17 @@ export async function POST(req: Request) {
         blocksMap.set(dedupeKey, {
           user_id: userId,
           name: event.summary || 'Google Calendar Event',
-          day_of_week: start.getDay(),
-          start_hour: start.getHours(),
-          start_minute: start.getMinutes(),
-          end_hour: end.getHours(),
-          end_minute: end.getMinutes(),
+          day_of_week: dayOfWeek,
+          start_hour: startHour,
+          start_minute: startMinute,
+          end_hour: endHour,
+          end_minute: endMinute,
           user_created: false,
           color: cal.color,
           recurring: false,
           google_event_id: event.id,
           google_calendar_id: cal.id,
-          specific_date: start.toISOString().split('T')[0],
+          specific_date: specificDate,
         });
       }
 

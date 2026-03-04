@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Lock, Repeat } from 'lucide-react';
 import type { ScheduledSlotWithTask, FixedBlock } from '@/lib/types/domain';
 import {
@@ -10,6 +10,7 @@ import {
 } from './constants';
 import type { SlotDragState, BlockDragState, CreateDragState } from './useDragDrop';
 import { formatTime } from '@/lib/utils/format';
+import { toTimeRanges, computeOverlapLayout } from './overlapLayout';
 
 interface Props {
   dayIndex: number;
@@ -47,6 +48,24 @@ export default function DayColumn({
   // Current time indicator
   const now = new Date();
   const isCurrentWeekDay = now.getDay() === dayIndex;
+
+  // Overlap layout
+  const overlapMap = useMemo(
+    () => computeOverlapLayout(toTimeRanges(blocks, slots)),
+    [blocks, slots],
+  );
+
+  function getOverlapStyle(id: string): React.CSSProperties {
+    const info = overlapMap.get(id);
+    if (!info || info.totalColumns <= 1) {
+      return { left: 4, right: 4 };
+    }
+    const widthPct = 100 / info.totalColumns;
+    return {
+      left: `calc(${info.column * widthPct}% + 4px)`,
+      width: `calc(${widthPct}% - 6px)`,
+    };
+  }
 
   return (
     <div
@@ -104,7 +123,7 @@ export default function DayColumn({
         return (
           <div
             key={block.id}
-            className={`absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight select-none ${
+            className={`absolute rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight select-none ${
               useInlineColor
                 ? isUserEvent ? 'cursor-grab' : ''
                 : isUserEvent
@@ -116,6 +135,7 @@ export default function DayColumn({
               height: style.height,
               zIndex: isDragging ? 30 : 10,
               ...(useInlineColor ? hexStyles(block.color!) : {}),
+              ...getOverlapStyle(block.id),
             }}
             onMouseDown={e => {
               if (!isUserEvent) return;
@@ -169,12 +189,13 @@ export default function DayColumn({
         return (
           <div
             key={slot.id}
-            className={`absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight cursor-grab select-none ${colorClasses} ${
+            className={`absolute rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight cursor-grab select-none ${colorClasses} ${
               isDragging ? 'opacity-20 border-dashed z-10' : 'z-10'
             } ${isSibling ? 'opacity-30 border-dashed' : ''}`}
             style={{
               top: style.top,
               height: style.height,
+              ...getOverlapStyle(slot.id),
             }}
             onMouseDown={e => {
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();

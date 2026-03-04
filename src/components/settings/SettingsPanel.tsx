@@ -1,17 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import type { SchedulingPreferences } from '@/lib/types/domain';
+import type { SchedulingPreferences, GoogleCalendarAccount } from '@/lib/types/domain';
 
 interface Props {
   preferences: SchedulingPreferences;
   onUpdate: (prefs: Partial<SchedulingPreferences>) => Promise<SchedulingPreferences>;
   onClose: () => void;
   gcal?: {
-    isConnected: boolean;
+    accounts: GoogleCalendarAccount[];
     syncing: boolean;
     onSync: () => void;
-    onDisconnect: () => void;
+    onDisconnect: (googleEmail: string) => void;
   };
 }
 
@@ -63,32 +63,35 @@ export default function SettingsPanel({ preferences, onUpdate, onClose, gcal }: 
           {gcal && (
             <div>
               <label className="text-xs font-medium text-text-secondary uppercase tracking-wide">Google Calendar</label>
-              <div className="mt-2">
-                {gcal.isConnected ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-green-500">Connected</span>
+              <div className="mt-2 space-y-2">
+                {gcal.accounts.map(account => (
+                  <div key={account.id} className="flex items-center gap-2">
+                    <span className="text-sm text-text-primary truncate flex-1" title={account.googleEmail}>
+                      {account.googleEmail}
+                    </span>
                     <button
-                      onClick={gcal.onSync}
-                      disabled={gcal.syncing}
-                      className="px-3 py-1.5 text-sm rounded-md bg-bg-tertiary border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover disabled:opacity-40 transition-colors"
-                    >
-                      {gcal.syncing ? 'Syncing...' : 'Sync Now'}
-                    </button>
-                    <button
-                      onClick={gcal.onDisconnect}
-                      className="px-3 py-1.5 text-sm rounded-md text-red-400 hover:text-red-300 hover:bg-bg-hover transition-colors"
+                      onClick={() => gcal.onDisconnect(account.googleEmail)}
+                      className="px-2 py-1 text-xs rounded-md text-red-400 hover:text-red-300 hover:bg-bg-hover transition-colors flex-shrink-0"
                     >
                       Disconnect
                     </button>
                   </div>
-                ) : (
-                  <a
-                    href="/api/google-calendar/auth"
-                    className="inline-block px-3 py-1.5 text-sm rounded-md bg-bg-tertiary border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+                ))}
+                {gcal.accounts.length > 0 && (
+                  <button
+                    onClick={gcal.onSync}
+                    disabled={gcal.syncing}
+                    className="px-3 py-1.5 text-sm rounded-md bg-bg-tertiary border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover disabled:opacity-40 transition-colors"
                   >
-                    Connect Google Calendar
-                  </a>
+                    {gcal.syncing ? 'Syncing...' : 'Sync Now'}
+                  </button>
                 )}
+                <a
+                  href="/api/google-calendar/auth"
+                  className="inline-block px-3 py-1.5 text-sm rounded-md bg-bg-tertiary border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+                >
+                  {gcal.accounts.length > 0 ? 'Add Google Account' : 'Connect Google Calendar'}
+                </a>
               </div>
             </div>
           )}

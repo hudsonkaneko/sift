@@ -38,7 +38,7 @@ export default function DashboardLayout({
   } = useSchedule();
   const { fixedBlocks, addFixedBlock, updateFixedBlock, deleteFixedBlock, mutate: mutateBlocks } = useFixedBlocks(weekOf);
   const gcal = useGoogleCalendar();
-  const { sources, visibility, toggleFixedBlocks, toggleGoogleCalendar, isGoogleCalendarVisible, mutateSources } = useCalendarSources(gcal.isConnected);
+  const { sources, visibility, toggleFixedBlocks, toggleGoogleCalendar, isGoogleCalendarVisible, mutateSources } = useCalendarSources(gcal.hasAccounts);
   const {
     sessions,
     activeSessionId,
@@ -56,13 +56,13 @@ export default function DashboardLayout({
   // Auto-sync Google Calendar on week change or initial connect
   const lastSyncKey = useRef<string | null>(null);
   const syncGcal = useCallback(async () => {
-    const key = `${weekOf}:${gcal.isConnected}`;
-    if (gcal.isConnected && weekOf && lastSyncKey.current !== key) {
+    const key = `${weekOf}:${gcal.hasAccounts}:${gcal.accounts.length}`;
+    if (gcal.hasAccounts && weekOf && lastSyncKey.current !== key) {
       lastSyncKey.current = key;
       await gcal.sync(weekOf);
       mutateBlocks();
     }
-  }, [gcal.isConnected, weekOf, gcal.sync, mutateBlocks]);
+  }, [gcal.hasAccounts, gcal.accounts.length, weekOf, gcal.sync, mutateBlocks]);
 
   useEffect(() => {
     syncGcal();
@@ -70,10 +70,10 @@ export default function DashboardLayout({
 
   // Fetch calendar sources when gcal connects
   useEffect(() => {
-    if (gcal.isConnected) {
+    if (gcal.hasAccounts) {
       mutateSources();
     }
-  }, [gcal.isConnected, mutateSources]);
+  }, [gcal.hasAccounts, gcal.accounts.length, mutateSources]);
 
   // Filter fixed blocks by visibility state
   const filteredBlocks = useMemo(() => {
@@ -155,7 +155,7 @@ export default function DashboardLayout({
               visibility={visibility}
               onToggleFixedBlocks={toggleFixedBlocks}
               onToggleGoogleCalendar={toggleGoogleCalendar}
-              hasGoogleCalendar={gcal.isConnected}
+              hasGoogleCalendar={gcal.hasAccounts}
             />
           </div>
 
@@ -182,15 +182,15 @@ export default function DashboardLayout({
           onUpdate={updatePreferences}
           onClose={() => setShowSettings(false)}
           gcal={{
-            isConnected: gcal.isConnected,
+            accounts: gcal.accounts,
             syncing: gcal.syncing,
             onSync: async () => {
               await gcal.sync(weekOf);
               mutateBlocks();
               mutateSources();
             },
-            onDisconnect: async () => {
-              await gcal.disconnect();
+            onDisconnect: async (googleEmail: string) => {
+              await gcal.disconnect(googleEmail);
               mutateBlocks();
               mutateSources();
             },

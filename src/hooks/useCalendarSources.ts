@@ -35,9 +35,9 @@ function saveVisibility(v: CalendarVisibility) {
 
 const fetcher = (url: string) => apiFetch<GoogleCalendarSource[]>(url);
 
-export function useCalendarSources(isConnected: boolean) {
+export function useCalendarSources(hasAccounts: boolean) {
   const { data: sources, mutate } = useSWR(
-    isConnected ? '/api/google-calendar/calendars' : null,
+    hasAccounts ? '/api/google-calendar/calendars' : null,
     fetcher,
   );
 

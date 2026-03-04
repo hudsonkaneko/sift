@@ -48,6 +48,14 @@ export interface FixedBlock {
   updatedAt: string;
 }
 
+export interface GoogleCalendarAccount {
+  id: string;
+  userId: string;
+  googleEmail: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface GoogleCalendarSource {
   id: string;
   userId: string;
@@ -55,6 +63,7 @@ export interface GoogleCalendarSource {
   name: string;
   color: string | null;
   enabled: boolean;
+  googleEmail: string | null;
   createdAt: string;
   updatedAt: string;
 }

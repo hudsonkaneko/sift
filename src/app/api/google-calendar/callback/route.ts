@@ -47,17 +47,38 @@ export async function GET(req: Request) {
   const tokens = await tokenRes.json();
   console.log('[gcal/callback] token exchange OK, has refresh_token:', !!tokens.refresh_token);
 
+  // Fetch the Google account email using the access token
+  let googleEmail: string | null = null;
+  try {
+    const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (userinfoRes.ok) {
+      const userinfo = await userinfoRes.json();
+      googleEmail = userinfo.email || null;
+      console.log('[gcal/callback] google email:', googleEmail);
+    }
+  } catch (e) {
+    console.log('[gcal/callback] failed to fetch userinfo:', e);
+  }
+
+  if (!googleEmail) {
+    console.log('[gcal/callback] could not determine google email');
+    return NextResponse.redirect(`${origin}/dashboard?gcal=error`);
+  }
+
   const supabase = createServiceClient();
   const { error: dbError } = await supabase
     .from('google_calendar_tokens')
     .upsert({
       user_id: state,
+      google_email: googleEmail,
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       token_expiry: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
       calendar_id: 'primary',
       updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' });
+    }, { onConflict: 'user_id,google_email' });
 
   if (dbError) {
     console.log('[gcal/callback] DB UPSERT FAILED:', dbError.message);

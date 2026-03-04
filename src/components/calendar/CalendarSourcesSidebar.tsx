@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
-import type { GoogleCalendarSource, FixedBlock } from '@/lib/types/domain';
+import type { GoogleCalendarSource } from '@/lib/types/domain';
 import type { CalendarVisibility } from '@/hooks/useCalendarSources';
 
 interface Props {
@@ -61,27 +61,59 @@ export default function CalendarSourcesSidebar({
           onToggle={onToggleFixedBlocks}
         />
 
-        {/* Google Calendar section */}
+        {/* Google Calendar sections grouped by account */}
         {hasGoogleCalendar && sources.length > 0 && (
-          <>
-            <div className="px-2 pt-3 pb-1">
-              <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
-                Google Calendar
-              </span>
-            </div>
-            {sources.map(source => (
-              <SourceRow
-                key={source.id}
-                name={source.name}
-                color={source.color || '#9ca3af'}
-                visible={visibility.googleCalendars[source.googleCalendarId] ?? true}
-                onToggle={() => onToggleGoogleCalendar(source.googleCalendarId)}
-              />
-            ))}
-          </>
+          <GroupedSources
+            sources={sources}
+            visibility={visibility}
+            onToggleGoogleCalendar={onToggleGoogleCalendar}
+          />
         )}
       </div>
     </div>
+  );
+}
+
+function GroupedSources({
+  sources,
+  visibility,
+  onToggleGoogleCalendar,
+}: {
+  sources: GoogleCalendarSource[];
+  visibility: CalendarVisibility;
+  onToggleGoogleCalendar: (googleCalendarId: string) => void;
+}) {
+  const grouped = useMemo(() => {
+    const map = new Map<string, GoogleCalendarSource[]>();
+    for (const source of sources) {
+      const key = source.googleEmail || 'Google Calendar';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(source);
+    }
+    return Array.from(map.entries());
+  }, [sources]);
+
+  return (
+    <>
+      {grouped.map(([email, emailSources]) => (
+        <div key={email}>
+          <div className="px-2 pt-3 pb-1">
+            <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider truncate block" title={email}>
+              {email}
+            </span>
+          </div>
+          {emailSources.map(source => (
+            <SourceRow
+              key={source.id}
+              name={source.name}
+              color={source.color || '#9ca3af'}
+              visible={visibility.googleCalendars[source.googleCalendarId] ?? true}
+              onToggle={() => onToggleGoogleCalendar(source.googleCalendarId)}
+            />
+          ))}
+        </div>
+      ))}
+    </>
   );
 }
 

@@ -53,11 +53,12 @@ export default function DashboardLayout({
     fetchMessages,
   } = useChat();
 
-  // Auto-sync Google Calendar on week change
-  const lastSyncedWeek = useRef<string | null>(null);
+  // Auto-sync Google Calendar on week change or initial connect
+  const lastSyncKey = useRef<string | null>(null);
   const syncGcal = useCallback(async () => {
-    if (gcal.isConnected && weekOf && lastSyncedWeek.current !== weekOf) {
-      lastSyncedWeek.current = weekOf;
+    const key = `${weekOf}:${gcal.isConnected}`;
+    if (gcal.isConnected && weekOf && lastSyncKey.current !== key) {
+      lastSyncKey.current = key;
       await gcal.sync(weekOf);
       mutateBlocks();
     }

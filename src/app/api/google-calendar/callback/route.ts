@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { createServiceClient } from '@/lib/supabase/server';
 
 export async function GET(req: Request) {
@@ -7,11 +8,16 @@ export async function GET(req: Request) {
   const state = url.searchParams.get('state'); // userId
   const error = url.searchParams.get('error');
 
+  const h = await headers();
+  const proto = h.get('x-forwarded-proto') || 'https';
+  const host = h.get('host') || '';
+  const origin = `${proto}://${host}`;
+
   if (error || !code || !state) {
-    return NextResponse.redirect(`${url.origin}/dashboard?gcal=error`);
+    return NextResponse.redirect(`${origin}/dashboard?gcal=error`);
   }
 
-  const redirectUri = `${url.origin}/api/google-calendar/callback`;
+  const redirectUri = `${origin}/api/google-calendar/callback`;
 
   // Exchange code for tokens
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -27,7 +33,7 @@ export async function GET(req: Request) {
   });
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(`${url.origin}/dashboard?gcal=error`);
+    return NextResponse.redirect(`${origin}/dashboard?gcal=error`);
   }
 
   const tokens = await tokenRes.json();
@@ -45,8 +51,8 @@ export async function GET(req: Request) {
     }, { onConflict: 'user_id' });
 
   if (dbError) {
-    return NextResponse.redirect(`${url.origin}/dashboard?gcal=error`);
+    return NextResponse.redirect(`${origin}/dashboard?gcal=error`);
   }
 
-  return NextResponse.redirect(`${url.origin}/dashboard?gcal=connected`);
+  return NextResponse.redirect(`${origin}/dashboard?gcal=connected`);
 }

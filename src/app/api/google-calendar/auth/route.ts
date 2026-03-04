@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { requireAuth } from '@/lib/utils/auth';
 
-export async function GET(req: Request) {
+export async function GET() {
   const [userId, errorResponse] = await requireAuth();
   if (!userId) return errorResponse!;
 
@@ -10,7 +11,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Google Calendar not configured' }, { status: 500 });
   }
 
-  const { origin } = new URL(req.url);
+  const h = await headers();
+  const proto = h.get('x-forwarded-proto') || 'https';
+  const host = h.get('host') || '';
+  const origin = `${proto}://${host}`;
   const redirectUri = `${origin}/api/google-calendar/callback`;
 
   const params = new URLSearchParams({

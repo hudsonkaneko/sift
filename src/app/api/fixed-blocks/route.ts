@@ -2,16 +2,37 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/utils/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 
-// GET /api/fixed-blocks — fetch all fixed blocks for the user
-export async function GET() {
+// GET /api/fixed-blocks — fetch fixed blocks for the user
+// Optional ?weekOf=YYYY-MM-DD to include date-specific blocks for that week
+export async function GET(req: Request) {
   const [userId, errorResponse] = await requireAuth();
   if (!userId) return errorResponse!;
 
+  const { searchParams } = new URL(req.url);
+  const weekOf = searchParams.get('weekOf');
+
   const supabase = createServiceClient();
-  const { data, error } = await supabase
+
+  let query = supabase
     .from('fixed_blocks')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', userId);
+
+  if (weekOf) {
+    // Return recurring blocks + date-specific blocks for this week (Sun-Sat)
+    const weekStart = new Date(weekOf + 'T00:00:00');
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+    const weekEndStr = weekEnd.toISOString().split('T')[0];
+
+    query = query.or(`specific_date.is.null,and(specific_date.gte.${weekStartStr},specific_date.lte.${weekEndStr})`);
+  } else {
+    // Backward compatible: only return blocks without a specific date
+    query = query.is('specific_date', null);
+  }
+
+  const { data, error } = await query
     .order('day_of_week', { ascending: true })
     .order('start_hour', { ascending: true });
 

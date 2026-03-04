@@ -7,9 +7,15 @@ interface Props {
   preferences: SchedulingPreferences;
   onUpdate: (prefs: Partial<SchedulingPreferences>) => Promise<SchedulingPreferences>;
   onClose: () => void;
+  gcal?: {
+    isConnected: boolean;
+    syncing: boolean;
+    onSync: () => void;
+    onDisconnect: () => void;
+  };
 }
 
-export default function SettingsPanel({ preferences, onUpdate, onClose }: Props) {
+export default function SettingsPanel({ preferences, onUpdate, onClose, gcal }: Props) {
   const [prefs, setPrefs] = useState<SchedulingPreferences>({ ...preferences });
   const [newRule, setNewRule] = useState('');
   const [saving, setSaving] = useState(false);
@@ -53,6 +59,40 @@ export default function SettingsPanel({ preferences, onUpdate, onClose }: Props)
 
         {/* Content */}
         <div className="flex-1 overflow-auto px-5 py-4 space-y-5">
+          {/* Google Calendar */}
+          {gcal && (
+            <div>
+              <label className="text-xs font-medium text-text-secondary uppercase tracking-wide">Google Calendar</label>
+              <div className="mt-2">
+                {gcal.isConnected ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-green-500">Connected</span>
+                    <button
+                      onClick={gcal.onSync}
+                      disabled={gcal.syncing}
+                      className="px-3 py-1.5 text-sm rounded-md bg-bg-tertiary border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover disabled:opacity-40 transition-colors"
+                    >
+                      {gcal.syncing ? 'Syncing...' : 'Sync Now'}
+                    </button>
+                    <button
+                      onClick={gcal.onDisconnect}
+                      className="px-3 py-1.5 text-sm rounded-md text-red-400 hover:text-red-300 hover:bg-bg-hover transition-colors"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                ) : (
+                  <a
+                    href="/api/google-calendar/auth"
+                    className="inline-block px-3 py-1.5 text-sm rounded-md bg-bg-tertiary border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+                  >
+                    Connect Google Calendar
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Time Window */}
           <div>
             <label className="text-xs font-medium text-text-secondary uppercase tracking-wide">Scheduling Window</label>

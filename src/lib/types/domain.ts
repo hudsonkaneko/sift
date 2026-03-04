@@ -41,6 +41,8 @@ export interface FixedBlock {
   userCreated: boolean;
   color: string | null;
   recurring: boolean;
+  googleEventId: string | null;
+  specificDate: string | null;
   createdAt: string;
   updatedAt: string;
 }

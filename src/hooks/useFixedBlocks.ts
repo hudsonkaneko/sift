@@ -7,10 +7,11 @@ import type { FixedBlock } from '@/lib/types/domain';
 
 const fetcher = (url: string) => apiFetch<unknown[]>(url).then(rows => rows.map(mapFixedBlock));
 
-export function useFixedBlocks() {
-  const { data: fixedBlocks, error, isLoading, mutate } = useSWR('/api/fixed-blocks', fetcher);
+export function useFixedBlocks(weekOf?: string) {
+  const key = weekOf ? `/api/fixed-blocks?weekOf=${weekOf}` : '/api/fixed-blocks';
+  const { data: fixedBlocks, error, isLoading, mutate } = useSWR(key, fetcher);
 
-  const addFixedBlock = async (block: Omit<FixedBlock, 'id' | 'userId' | 'createdAt' | 'updatedAt'>) => {
+  const addFixedBlock = async (block: Omit<FixedBlock, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'googleEventId' | 'specificDate'>) => {
     await apiFetch('/api/fixed-blocks', {
       method: 'POST',
       body: JSON.stringify(block),

@@ -73,7 +73,8 @@ export async function POST(req: Request) {
     supabase.from('tasks').select('*').eq('user_id', userId).eq('completed', false),
     supabase.from('scheduled_slots').select('*').eq('user_id', userId).eq('week_of', weekOf).eq('locked', true),
     supabase.from('scheduled_slots').select('id').eq('user_id', userId).eq('week_of', weekOf).eq('locked', false),
-    supabase.from('fixed_blocks').select('*').eq('user_id', userId),
+    supabase.from('fixed_blocks').select('*').eq('user_id', userId)
+      .or(`specific_date.is.null,and(specific_date.gte.${weekOf},specific_date.lte.${(() => { const d = new Date(weekOf + 'T00:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().split('T')[0]; })()})`),
     supabase.from('scheduling_preferences').select('*').eq('user_id', userId).single(),
   ]);
 

@@ -38,6 +38,8 @@ export function mapFixedBlock(row: any): FixedBlock {
     userCreated: row.user_created,
     color: row.color,
     recurring: row.recurring ?? false,
+    googleEventId: row.google_event_id ?? null,
+    specificDate: row.specific_date ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

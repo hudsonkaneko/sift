@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
 import TaskList from '@/components/tasks/TaskList';
@@ -11,6 +11,7 @@ import { usePreferences } from '@/hooks/usePreferences';
 import { useFixedBlocks } from '@/hooks/useFixedBlocks';
 import { useSchedule } from '@/hooks/useSchedule';
 import { useChat } from '@/hooks/useChat';
+import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 
 export default function DashboardLayout({
   children,
@@ -20,7 +21,6 @@ export default function DashboardLayout({
   const [showSettings, setShowSettings] = useState(false);
   const { tasks, toggleComplete, updateTask, deleteTask, addSubtask, deleteAllTasks } = useTasks();
   const { preferences, updatePreferences } = usePreferences();
-  const { fixedBlocks, addFixedBlock, updateFixedBlock, deleteFixedBlock } = useFixedBlocks();
   const {
     weekOf,
     slots,
@@ -34,6 +34,8 @@ export default function DashboardLayout({
     generateSchedule,
     mutateSlots,
   } = useSchedule();
+  const { fixedBlocks, addFixedBlock, updateFixedBlock, deleteFixedBlock, mutate: mutateBlocks } = useFixedBlocks(weekOf);
+  const gcal = useGoogleCalendar();
   const {
     sessions,
     activeSessionId,
@@ -47,6 +49,20 @@ export default function DashboardLayout({
     clearMessages,
     fetchMessages,
   } = useChat();
+
+  // Auto-sync Google Calendar on week change
+  const lastSyncedWeek = useRef<string | null>(null);
+  const syncGcal = useCallback(async () => {
+    if (gcal.isConnected && weekOf && lastSyncedWeek.current !== weekOf) {
+      lastSyncedWeek.current = weekOf;
+      await gcal.sync(weekOf);
+      mutateBlocks();
+    }
+  }, [gcal.isConnected, weekOf, gcal.sync, mutateBlocks]);
+
+  useEffect(() => {
+    syncGcal();
+  }, [syncGcal]);
 
   // Auto-load first session messages
   useEffect(() => {
@@ -125,6 +141,18 @@ export default function DashboardLayout({
           preferences={preferences}
           onUpdate={updatePreferences}
           onClose={() => setShowSettings(false)}
+          gcal={{
+            isConnected: gcal.isConnected,
+            syncing: gcal.syncing,
+            onSync: async () => {
+              await gcal.sync(weekOf);
+              mutateBlocks();
+            },
+            onDisconnect: async () => {
+              await gcal.disconnect();
+              mutateBlocks();
+            },
+          }}
         />
       )}
     </div>

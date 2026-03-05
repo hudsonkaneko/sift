@@ -73,7 +73,8 @@ export default function DayColumn({
       className="relative flex-1 border-r border-border-light last:border-r-0"
       style={{ paddingTop: GRID_PAD_TOP }}
       onMouseDown={e => {
-        // Only start create drag if clicking directly on the column background
+        // Only start create drag on left-click directly on the column background
+        if (e.button !== 0) return;
         if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.hourLine) {
           onColumnMouseDown(e, dayIndex, dayIndex);
         }

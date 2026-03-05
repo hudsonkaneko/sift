@@ -129,6 +129,7 @@ export function useDragDrop({
     slot: ScheduledSlotWithTask,
     mode: 'move' | 'resize-bottom',
   ) => {
+    if (e.button !== 0) return; // Only left-click drags
     e.preventDefault();
     e.stopPropagation();
 
@@ -243,6 +244,7 @@ export function useDragDrop({
     block: FixedBlock,
     mode: 'move' | 'resize-bottom',
   ) => {
+    if (e.button !== 0) return; // Only left-click drags
     e.preventDefault();
     e.stopPropagation();
 
@@ -334,6 +336,7 @@ export function useDragDrop({
   // ─── Create drag ───
 
   const startCreateDrag = useCallback((e: React.MouseEvent, colIndex: number, dayOfWeek: number) => {
+    if (e.button !== 0) return; // Only left-click drags
     const relY = getRelativeY(e.clientY, colIndex);
     const totalMin = ((relY - GRID_PAD_TOP) / HOUR_HEIGHT) * 60 + START_HOUR * 60;
     const snapped = snapMinutes(Math.max(START_HOUR * 60, Math.min(totalMin, END_HOUR * 60)));

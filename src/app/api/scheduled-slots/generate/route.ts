@@ -139,8 +139,9 @@ export async function POST(req: Request) {
   const supabase = createServiceClient();
 
   // Fetch all needed data in parallel
-  const [tasksResult, lockedSlotsResult, allSlotsResult, blocksResult, prefsResult, excludedSourcesResult] = await Promise.all([
+  const [tasksResult, completedTaskIdsResult, lockedSlotsResult, allSlotsResult, blocksResult, prefsResult, excludedSourcesResult] = await Promise.all([
     supabase.from('tasks').select('*').eq('user_id', userId).eq('completed', false),
+    supabase.from('tasks').select('id').eq('user_id', userId).eq('completed', true),
     supabase.from('scheduled_slots').select('*').eq('user_id', userId).eq('week_of', weekOf).eq('locked', true),
     supabase.from('scheduled_slots').select('id').eq('user_id', userId).eq('week_of', weekOf).eq('locked', false),
     supabase.from('fixed_blocks').select('*').eq('user_id', userId)
@@ -150,7 +151,10 @@ export async function POST(req: Request) {
   ]);
 
   const tasks = tasksResult.data || [];
-  const lockedSlots = lockedSlotsResult.data || [];
+  const completedTaskIds = new Set((completedTaskIdsResult.data || []).map((t: { id: string }) => t.id));
+  const allLockedSlots = lockedSlotsResult.data || [];
+  // Separate completed task slots (don't block time) from active locked slots (block time)
+  const lockedSlots = allLockedSlots.filter((s: { task_id: string }) => !completedTaskIds.has(s.task_id));
   const unlockedSlotIds = (allSlotsResult.data || []).map(s => s.id);
   const prefs = prefsResult.data;
 

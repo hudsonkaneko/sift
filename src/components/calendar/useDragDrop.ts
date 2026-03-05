@@ -380,19 +380,18 @@ export function useDragDrop({
       const currentMin = cd.currentHour * 60 + cd.currentMinute;
       const startMin = Math.min(anchorMin, currentMin);
       const endMin = Math.max(anchorMin, currentMin);
-
-      // If drag was less than SNAP_MINUTES, default to 1-hour block
       const duration = endMin - startMin;
-      const finalStart = startMin;
-      const finalEnd = duration < SNAP_MINUTES ? Math.min(startMin + 60, END_HOUR * 60) : endMin;
 
-      onCreateDragEnd(
-        cd.dayOfWeek,
-        Math.floor(finalStart / 60),
-        finalStart % 60,
-        Math.floor(finalEnd / 60),
-        finalEnd % 60,
-      );
+      // Require a real drag (at least one snap interval) — ignore clicks
+      if (duration >= SNAP_MINUTES) {
+        onCreateDragEnd(
+          cd.dayOfWeek,
+          Math.floor(startMin / 60),
+          startMin % 60,
+          Math.floor(endMin / 60),
+          endMin % 60,
+        );
+      }
 
       setCreateDrag(null);
     };

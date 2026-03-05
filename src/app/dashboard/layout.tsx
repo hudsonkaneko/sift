@@ -71,7 +71,14 @@ export default function DashboardLayout({
 
   // Wrap toggleComplete to detect pull-up opportunities
   const handleToggleComplete = useCallback(async (taskId: string, completed: boolean) => {
+    // Optimistically lock/unlock slots for this task
+    const updatedSlots = (slots || []).map(s =>
+      s.taskId === taskId ? { ...s, locked: completed } : s
+    );
+    mutateSlots(updatedSlots, false);
+
     await toggleComplete(taskId, completed);
+    mutateSlots(); // revalidate to get server state
 
     if (!completed || !isCurrentWeek) return;
 

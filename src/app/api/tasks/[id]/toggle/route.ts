@@ -44,6 +44,23 @@ export async function POST(
     }
   }
 
+  // Lock/unlock associated scheduled slots so completed tasks stay visible
+  // but their time becomes available for other tasks during generation
+  const allTaskIds = [id];
+  if (completed) {
+    const { data: subtasks } = await supabase
+      .from('tasks')
+      .select('id')
+      .eq('parent_id', id)
+      .eq('user_id', userId);
+    if (subtasks) allTaskIds.push(...subtasks.map(s => s.id));
+  }
+  await supabase
+    .from('scheduled_slots')
+    .update({ locked: completed })
+    .in('task_id', allTaskIds)
+    .eq('user_id', userId);
+
   // If this is a subtask, handle parent cascading
   if (task.parent_id) {
     if (completed) {

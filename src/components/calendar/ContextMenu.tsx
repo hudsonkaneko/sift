@@ -31,11 +31,7 @@ export function BlockContextMenu({ menu, onEdit, onDelete, onColorChange, onClos
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     window.addEventListener('mousedown', handle);
-    window.addEventListener('contextmenu', handle);
-    return () => {
-      window.removeEventListener('mousedown', handle);
-      window.removeEventListener('contextmenu', handle);
-    };
+    return () => window.removeEventListener('mousedown', handle);
   }, [onClose]);
 
   const menuWidth = 180;
@@ -121,11 +117,7 @@ export function SwapContextMenu({ menu, tasks, onToggleLock, onSwapTask, onClose
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     window.addEventListener('mousedown', handle);
-    window.addEventListener('contextmenu', handle);
-    return () => {
-      window.removeEventListener('mousedown', handle);
-      window.removeEventListener('contextmenu', handle);
-    };
+    return () => window.removeEventListener('mousedown', handle);
   }, [onClose]);
 
   const swappable = tasks.filter(t => !t.completed && t.id !== menu.taskId);

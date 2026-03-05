@@ -110,11 +110,7 @@ export default function TaskList({
       }
     };
     window.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('contextmenu', handleClickOutside);
-    return () => {
-      window.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('contextmenu', handleClickOutside);
-    };
+    return () => window.removeEventListener('mousedown', handleClickOutside);
   }, [contextMenu]);
 
   // Focus subtask input when adding

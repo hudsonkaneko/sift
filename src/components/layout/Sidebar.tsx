@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import ChatPanel from '@/components/chat/ChatPanel';
+import SessionSidebar from '@/components/chat/SessionSidebar';
 import type { ChatMessage, ChatSession } from '@/lib/types/domain';
 
 interface Props {
@@ -36,24 +38,37 @@ export default function Sidebar({
   onEnterProjectScope,
   onSettingsClick,
 }: Props) {
+  const [showSessions, setShowSessions] = useState(true);
+
   return (
-    <div className="w-[400px] min-w-[360px] flex flex-col bg-bg-primary border-r border-border">
-      <ChatPanel
-        messages={messages}
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onSend={onSend}
-        onClear={onClear}
-        onSwitchSession={onSwitchSession}
-        onCreateSession={onCreateSession}
-        onRenameSession={onRenameSession}
-        onDeleteSession={onDeleteSession}
-        loading={loading}
-        projectScope={projectScope}
-        onExitProjectScope={onExitProjectScope}
-        onEnterProjectScope={onEnterProjectScope}
-        onSettingsClick={onSettingsClick}
-      />
+    <div className="flex h-full border-r border-border">
+      {/* Session list sidebar */}
+      {showSessions && (
+        <SessionSidebar
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSwitchSession={onSwitchSession}
+          onCreateSession={onCreateSession}
+          onRenameSession={onRenameSession}
+          onDeleteSession={onDeleteSession}
+          onEnterProjectScope={onEnterProjectScope}
+        />
+      )}
+
+      {/* Chat panel */}
+      <div className={`${showSessions ? 'w-[360px]' : 'w-[400px]'} flex flex-col bg-bg-primary`}>
+        <ChatPanel
+          messages={messages}
+          onSend={onSend}
+          onClear={onClear}
+          loading={loading}
+          projectScope={projectScope}
+          onExitProjectScope={onExitProjectScope}
+          onSettingsClick={onSettingsClick}
+          showSessions={showSessions}
+          onToggleSessions={() => setShowSessions(v => !v)}
+        />
+      </div>
     </div>
   );
 }

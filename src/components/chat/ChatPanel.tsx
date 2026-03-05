@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Search, Send, Trash2, Pencil, ArrowLeft, FolderOpen, Settings, PanelLeft } from 'lucide-react';
-import { UserButton } from '@clerk/nextjs';
-import { useUser } from '@clerk/nextjs';
-import type { ChatMessage, ChatSession } from '@/lib/types/domain';
+import { Send, ArrowLeft, Settings, PanelLeft } from 'lucide-react';
+import { UserButton, useUser } from '@clerk/nextjs';
+import type { ChatMessage } from '@/lib/types/domain';
 import MultipleChoiceWidget from './MultipleChoiceWidget';
 
 interface FollowUpQuestion {
@@ -14,43 +13,29 @@ interface FollowUpQuestion {
 
 interface Props {
   messages: ChatMessage[];
-  sessions: ChatSession[];
-  activeSessionId: string | null;
   onSend: (message: string) => Promise<void>;
   onClear: () => void;
-  onSwitchSession: (id: string) => void;
-  onCreateSession: () => void;
-  onRenameSession: (id: string, name: string) => void;
-  onDeleteSession: (id: string) => void;
   loading: boolean;
   projectScope: { taskId: string; taskName: string } | null;
   onExitProjectScope: () => void;
-  onEnterProjectScope: (taskId: string, taskName: string, sessionId: string) => void;
   onSettingsClick: () => void;
+  showSessions: boolean;
+  onToggleSessions: () => void;
 }
 
 export default function ChatPanel({
   messages,
-  sessions,
-  activeSessionId,
   onSend,
   onClear,
-  onSwitchSession,
-  onCreateSession,
-  onRenameSession,
-  onDeleteSession,
   loading,
   projectScope,
   onExitProjectScope,
-  onEnterProjectScope,
   onSettingsClick,
+  showSessions,
+  onToggleSessions,
 }: Props) {
   const { user } = useUser();
   const [input, setInput] = useState('');
-  const [showSessions, setShowSessions] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -85,10 +70,10 @@ export default function ChatPanel({
     : '?';
 
   return (
-    <>
-      {/* Sidebar header */}
+    <div className="flex-1 flex flex-col min-w-0">
+      {/* Header */}
       <div className="px-5 pt-5 pb-3">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center justify-between">
           {projectScope ? (
             <button
               onClick={onExitProjectScope}
@@ -98,16 +83,18 @@ export default function ChatPanel({
               <span className="text-base font-semibold truncate max-w-[280px]">{projectScope.taskName}</span>
             </button>
           ) : (
-            <img src="/logo.png" alt="Sift" className="w-9 h-9 rounded-xl" />
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onToggleSessions}
+                className={`p-1.5 rounded-lg hover:bg-bg-hover transition-colors ${showSessions ? 'text-accent' : 'text-text-secondary'}`}
+                aria-label="Toggle sessions"
+              >
+                <PanelLeft className="w-5 h-5" />
+              </button>
+              <img src="/logo.png" alt="Sift" className="w-8 h-8 rounded-xl" />
+            </div>
           )}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowSessions(v => !v)}
-              className={`p-1.5 rounded-lg hover:bg-bg-hover transition-colors ${showSessions ? 'text-accent' : 'text-text-secondary'}`}
-              aria-label="Toggle sessions"
-            >
-              <PanelLeft className="w-4 h-4" />
-            </button>
             <button
               onClick={onSettingsClick}
               className="p-1.5 rounded-lg hover:bg-bg-hover text-text-secondary transition-colors"
@@ -118,146 +105,7 @@ export default function ChatPanel({
             <UserButton afterSignOutUrl="/" />
           </div>
         </div>
-
-        <button
-          onClick={onCreateSession}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-text-primary hover:bg-bg-tertiary transition-colors"
-        >
-          <Plus size={16} className="text-accent" />
-          New Chat
-        </button>
       </div>
-
-      {/* Collapsible session list */}
-      {showSessions && (() => {
-        const query = searchQuery.toLowerCase();
-        const allFiltered = sessions.filter(s => s.name.toLowerCase().includes(query));
-        const generalSessions = allFiltered.filter(s => !s.taskId);
-        const projectGroups = new Map<string, { taskName: string; sessions: ChatSession[] }>();
-        for (const s of allFiltered) {
-          if (s.taskId) {
-            const existing = projectGroups.get(s.taskId);
-            if (existing) {
-              existing.sessions.push(s);
-            } else {
-              projectGroups.set(s.taskId, { taskName: s.taskName || 'Untitled Project', sessions: [s] });
-            }
-          }
-        }
-
-        const renderSession = (session: ChatSession, isProject: boolean) => (
-          <div
-            key={session.id}
-            className={`group flex items-center ${isProject ? 'pl-7 pr-3' : 'px-3'} py-1.5 rounded-lg text-sm cursor-pointer transition-colors ${
-              session.id === activeSessionId
-                ? 'bg-accent-light text-accent font-medium'
-                : 'text-text-secondary hover:bg-bg-tertiary'
-            }`}
-            onClick={() => {
-              if (editingSessionId !== session.id) {
-                if (isProject && session.taskId && session.taskName) {
-                  onEnterProjectScope(session.taskId, session.taskName, session.id);
-                } else {
-                  onSwitchSession(session.id);
-                }
-              }
-            }}
-          >
-            {editingSessionId === session.id ? (
-              <input
-                value={editName}
-                onChange={e => setEditName(e.target.value)}
-                onBlur={() => { if (editName.trim()) onRenameSession(session.id, editName.trim()); setEditingSessionId(null); }}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { if (editName.trim()) onRenameSession(session.id, editName.trim()); setEditingSessionId(null); }
-                  if (e.key === 'Escape') setEditingSessionId(null);
-                }}
-                className="bg-bg-primary border border-border rounded-lg px-2 py-1 text-sm text-text-primary outline-none focus:border-accent w-full"
-                autoFocus
-                onClick={e => e.stopPropagation()}
-              />
-            ) : (
-              <>
-                <span className="truncate flex-1">{session.name}</span>
-                <div className="hidden group-hover:flex items-center gap-1 flex-shrink-0">
-                  <button
-                    className="p-1 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
-                    onClick={e => { e.stopPropagation(); setEditingSessionId(session.id); setEditName(session.name); }}
-                    title="Rename"
-                  >
-                    <Pencil size={12} />
-                  </button>
-                  {sessions.length > 1 && (
-                    <button
-                      className="p-1 rounded-md hover:bg-bg-hover text-text-muted hover:text-red-400 transition-colors"
-                      onClick={e => { e.stopPropagation(); onDeleteSession(session.id); }}
-                      title="Delete"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        );
-
-        return (
-          <div className="flex-shrink-0 overflow-y-auto max-h-[40vh] border-b border-border">
-            {/* Search/filter input */}
-            <div className="px-4 pt-2 pb-1.5">
-              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-bg-secondary text-xs">
-                <Search size={12} className="text-text-muted flex-shrink-0" />
-                <input
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Filter..."
-                  className="bg-transparent outline-none text-text-primary placeholder-text-muted flex-1 min-w-0"
-                />
-                {(searchQuery || messages.length > 0) && (
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {searchQuery && (
-                      <button
-                        onClick={() => setSearchQuery('')}
-                        className="text-text-muted hover:text-text-secondary transition-colors"
-                      >
-                        Clear
-                      </button>
-                    )}
-                    {messages.length > 0 && (
-                      <button
-                        onClick={onClear}
-                        className="text-text-muted hover:text-text-secondary transition-colors"
-                      >
-                        Clear chat
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* Session items */}
-            <div className="px-2 pb-2 space-y-0.5">
-              {generalSessions.map(s => renderSession(s, false))}
-              {projectGroups.size > 0 && generalSessions.length > 0 && (
-                <div className="border-t border-border my-1.5" />
-              )}
-              {Array.from(projectGroups.entries()).map(([taskId, group]) => (
-                <div key={taskId}>
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-muted select-none">
-                    <FolderOpen size={12} />
-                    <span className="truncate">{group.taskName}</span>
-                  </div>
-                  {group.sessions.map(s => renderSession(s, true))}
-                </div>
-              ))}
-              {allFiltered.length === 0 && (
-                <div className="px-3 py-2 text-xs text-text-muted">No sessions found</div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -342,6 +190,6 @@ export default function ChatPanel({
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }

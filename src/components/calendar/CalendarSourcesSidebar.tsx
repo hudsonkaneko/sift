@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { ChevronRight, ChevronLeft } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CalendarOff, CalendarCheck } from 'lucide-react';
 import type { GoogleCalendarSource } from '@/lib/types/domain';
 import type { CalendarVisibility } from '@/hooks/useCalendarSources';
 
@@ -10,6 +10,7 @@ interface Props {
   visibility: CalendarVisibility;
   onToggleFixedBlocks: () => void;
   onToggleGoogleCalendar: (googleCalendarId: string) => void;
+  onToggleScheduling: (sourceId: string) => void;
   hasGoogleCalendar: boolean;
 }
 
@@ -18,6 +19,7 @@ export default function CalendarSourcesSidebar({
   visibility,
   onToggleFixedBlocks,
   onToggleGoogleCalendar,
+  onToggleScheduling,
   hasGoogleCalendar,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
@@ -67,6 +69,7 @@ export default function CalendarSourcesSidebar({
             sources={sources}
             visibility={visibility}
             onToggleGoogleCalendar={onToggleGoogleCalendar}
+            onToggleScheduling={onToggleScheduling}
           />
         )}
       </div>
@@ -78,10 +81,12 @@ function GroupedSources({
   sources,
   visibility,
   onToggleGoogleCalendar,
+  onToggleScheduling,
 }: {
   sources: GoogleCalendarSource[];
   visibility: CalendarVisibility;
   onToggleGoogleCalendar: (googleCalendarId: string) => void;
+  onToggleScheduling: (sourceId: string) => void;
 }) {
   const grouped = useMemo(() => {
     const map = new Map<string, GoogleCalendarSource[]>();
@@ -109,6 +114,8 @@ function GroupedSources({
               color={source.color || '#9ca3af'}
               visible={visibility.googleCalendars[source.googleCalendarId] ?? true}
               onToggle={() => onToggleGoogleCalendar(source.googleCalendarId)}
+              affectsScheduling={source.affectsScheduling}
+              onToggleScheduling={() => onToggleScheduling(source.id)}
             />
           ))}
         </div>
@@ -122,27 +129,45 @@ function SourceRow({
   color,
   visible,
   onToggle,
+  affectsScheduling,
+  onToggleScheduling,
 }: {
   name: string;
   color: string;
   visible: boolean;
   onToggle: () => void;
+  affectsScheduling?: boolean;
+  onToggleScheduling?: () => void;
 }) {
   return (
-    <button
-      onClick={onToggle}
+    <div
       className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-xs transition-colors hover:bg-bg-tertiary ${
         visible ? 'text-text-primary' : 'text-text-muted line-through opacity-50'
       }`}
     >
-      <span
-        className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-        style={{
-          backgroundColor: visible ? color : 'transparent',
-          border: visible ? 'none' : `1.5px solid ${color}`,
-        }}
-      />
-      <span className="truncate">{name}</span>
-    </button>
+      <button onClick={onToggle} className="flex items-center gap-2 min-w-0 flex-1">
+        <span
+          className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+          style={{
+            backgroundColor: visible ? color : 'transparent',
+            border: visible ? 'none' : `1.5px solid ${color}`,
+          }}
+        />
+        <span className="truncate">{name}</span>
+      </button>
+      {onToggleScheduling && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleScheduling(); }}
+          className={`flex-shrink-0 p-0.5 rounded transition-colors ${
+            affectsScheduling
+              ? 'text-accent hover:text-accent/80'
+              : 'text-text-muted hover:text-text-secondary'
+          }`}
+          title={affectsScheduling ? 'Exclude from scheduling' : 'Include in scheduling'}
+        >
+          {affectsScheduling ? <CalendarCheck size={12} /> : <CalendarOff size={12} />}
+        </button>
+      )}
+    </div>
   );
 }

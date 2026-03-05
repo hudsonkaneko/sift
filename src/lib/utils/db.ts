@@ -66,6 +66,7 @@ export function mapGoogleCalendarSource(row: any): GoogleCalendarSource {
     name: row.name,
     color: row.color,
     enabled: row.enabled,
+    affectsScheduling: row.affects_scheduling ?? true,
     googleEmail: row.google_email ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

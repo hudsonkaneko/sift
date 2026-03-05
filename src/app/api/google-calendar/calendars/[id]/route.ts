@@ -10,17 +10,26 @@ export async function PATCH(
   if (!userId) return errorResponse!;
 
   const { id } = await params;
-  const { enabled } = await req.json();
+  const body = await req.json();
 
-  if (typeof enabled !== 'boolean') {
-    return NextResponse.json({ error: 'enabled must be a boolean' }, { status: 400 });
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+  if (typeof body.enabled === 'boolean') {
+    update.enabled = body.enabled;
+  }
+  if (typeof body.affectsScheduling === 'boolean') {
+    update.affects_scheduling = body.affectsScheduling;
+  }
+
+  if (Object.keys(update).length === 1) {
+    return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
   const supabase = createServiceClient();
 
   const { error } = await supabase
     .from('google_calendar_sources')
-    .update({ enabled, updated_at: new Date().toISOString() })
+    .update(update)
     .eq('id', id)
     .eq('user_id', userId);
 

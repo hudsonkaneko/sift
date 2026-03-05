@@ -38,7 +38,7 @@ export default function DashboardLayout({
   } = useSchedule();
   const { fixedBlocks, addFixedBlock, updateFixedBlock, deleteFixedBlock, mutate: mutateBlocks } = useFixedBlocks(weekOf);
   const gcal = useGoogleCalendar();
-  const { sources, visibility, toggleFixedBlocks, toggleGoogleCalendar, isGoogleCalendarVisible, mutateSources } = useCalendarSources(gcal.hasAccounts);
+  const { sources, visibility, toggleFixedBlocks, toggleGoogleCalendar, toggleScheduling, isGoogleCalendarVisible, mutateSources } = useCalendarSources(gcal.hasAccounts);
   const {
     sessions,
     activeSessionId,
@@ -160,6 +160,7 @@ export default function DashboardLayout({
               visibility={visibility}
               onToggleFixedBlocks={toggleFixedBlocks}
               onToggleGoogleCalendar={toggleGoogleCalendar}
+              onToggleScheduling={toggleScheduling}
               hasGoogleCalendar={gcal.hasAccounts}
             />
           </div>

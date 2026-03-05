@@ -69,20 +69,29 @@ export async function POST(req: Request) {
   const supabase = createServiceClient();
 
   // Fetch all needed data in parallel
-  const [tasksResult, lockedSlotsResult, allSlotsResult, blocksResult, prefsResult] = await Promise.all([
+  const [tasksResult, lockedSlotsResult, allSlotsResult, blocksResult, prefsResult, excludedSourcesResult] = await Promise.all([
     supabase.from('tasks').select('*').eq('user_id', userId).eq('completed', false),
     supabase.from('scheduled_slots').select('*').eq('user_id', userId).eq('week_of', weekOf).eq('locked', true),
     supabase.from('scheduled_slots').select('id').eq('user_id', userId).eq('week_of', weekOf).eq('locked', false),
     supabase.from('fixed_blocks').select('*').eq('user_id', userId)
       .or(`specific_date.is.null,and(specific_date.gte.${weekOf},specific_date.lte.${(() => { const d = new Date(weekOf + 'T00:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().split('T')[0]; })()})`),
     supabase.from('scheduling_preferences').select('*').eq('user_id', userId).single(),
+    supabase.from('google_calendar_sources').select('google_calendar_id').eq('user_id', userId).eq('affects_scheduling', false),
   ]);
 
   const tasks = tasksResult.data || [];
   const lockedSlots = lockedSlotsResult.data || [];
   const unlockedSlotIds = (allSlotsResult.data || []).map(s => s.id);
-  const fixedBlocks = blocksResult.data || [];
   const prefs = prefsResult.data;
+
+  // Filter out fixed blocks from calendars excluded from scheduling
+  const excludedCalendarIds = new Set(
+    (excludedSourcesResult.data || []).map((s: { google_calendar_id: string }) => s.google_calendar_id)
+  );
+  const fixedBlocks = (blocksResult.data || []).filter(
+    (fb: { google_calendar_id: string | null }) =>
+      !fb.google_calendar_id || !excludedCalendarIds.has(fb.google_calendar_id)
+  );
 
   const earliestHour = prefs?.earliest_hour ?? 9;
   const latestHour = prefs?.latest_hour ?? 23;

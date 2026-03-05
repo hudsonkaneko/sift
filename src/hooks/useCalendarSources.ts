@@ -72,11 +72,31 @@ export function useCalendarSources(hasAccounts: boolean) {
     return visibility.googleCalendars[googleCalendarId] ?? true;
   }, [visibility.googleCalendars]);
 
+  const toggleScheduling = useCallback(async (sourceId: string) => {
+    const source = sources?.find(s => s.id === sourceId);
+    if (!source) return;
+    const newValue = !source.affectsScheduling;
+
+    // Optimistically update
+    mutate(
+      sources?.map(s => s.id === sourceId ? { ...s, affectsScheduling: newValue } : s),
+      false,
+    );
+
+    await apiFetch(`/api/google-calendar/calendars/${sourceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ affectsScheduling: newValue }),
+    });
+
+    mutate();
+  }, [sources, mutate]);
+
   return {
     sources: sources || [],
     visibility,
     toggleFixedBlocks,
     toggleGoogleCalendar,
+    toggleScheduling,
     isGoogleCalendarVisible,
     mutateSources: mutate,
   };

@@ -63,6 +63,7 @@ export interface GoogleCalendarSource {
   name: string;
   color: string | null;
   enabled: boolean;
+  affectsScheduling: boolean;
   googleEmail: string | null;
   createdAt: string;
   updatedAt: string;

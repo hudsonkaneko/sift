@@ -27,16 +27,24 @@ export function useTasks() {
   };
 
   const updateTask = async (id: string, updates: Partial<Task>) => {
-    await apiFetch(`/api/tasks/${id}`, {
+    // Optimistic update: apply changes instantly
+    const optimistic = (tasks || []).map(t =>
+      t.id === id ? { ...t, ...updates } : t
+    );
+    mutate(optimistic, false);
+
+    apiFetch(`/api/tasks/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
-    });
-    mutate();
+    }).then(() => mutate());
   };
 
   const deleteTask = async (id: string) => {
-    await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
-    mutate();
+    // Optimistic delete: remove task and its subtasks instantly
+    const optimistic = (tasks || []).filter(t => t.id !== id && t.parentId !== id);
+    mutate(optimistic, false);
+
+    apiFetch(`/api/tasks/${id}`, { method: 'DELETE' }).then(() => mutate());
   };
 
   const toggleComplete = async (id: string, completed: boolean) => {
@@ -67,6 +75,27 @@ export function useTasks() {
       color?: string | null;
     },
   ) => {
+    // Optimistic: add a temporary subtask immediately
+    const tempId = `temp-${Date.now()}`;
+    const now = new Date().toISOString();
+    const parent = (tasks || []).find(t => t.id === parentId);
+    const tempTask: Task = {
+      id: tempId,
+      userId: parent?.userId || '',
+      name: subtask.name,
+      category: subtask.category || parent?.category || 'Personal',
+      estimatedMinutes: subtask.estimatedMinutes || 30,
+      deadline: subtask.deadline ?? null,
+      recurrence: subtask.recurrence || 'none',
+      completed: false,
+      color: subtask.color ?? parent?.color ?? null,
+      parentId,
+      urgency: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mutate([...(tasks || []), tempTask], false);
+
     const data = await apiFetch<unknown>(`/api/tasks/${parentId}/subtasks`, {
       method: 'POST',
       body: JSON.stringify(subtask),
@@ -77,10 +106,11 @@ export function useTasks() {
 
   const deleteAllTasks = async () => {
     if (!tasks) return;
-    // Delete top-level tasks (cascade handles subtasks)
+    // Optimistic: clear all tasks instantly
+    mutate([], false);
+
     const topLevel = tasks.filter(t => !t.parentId);
-    await Promise.all(topLevel.map(t => apiFetch(`/api/tasks/${t.id}`, { method: 'DELETE' })));
-    mutate();
+    Promise.all(topLevel.map(t => apiFetch(`/api/tasks/${t.id}`, { method: 'DELETE' }))).then(() => mutate());
   };
 
   return {

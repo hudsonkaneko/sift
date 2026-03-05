@@ -46,31 +46,55 @@ export function useChat() {
     if (projectScope) {
       body.taskId = projectScope.taskId;
     }
+
+    // Optimistic: add temp session immediately
+    const tempId = `temp-${Date.now()}`;
+    const tempSession: ChatSession = {
+      id: tempId,
+      userId: '',
+      name: 'New Chat',
+      taskId: projectScope?.taskId || null,
+      taskName: projectScope?.taskName || null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    mutateSessions([tempSession, ...(sessions || [])], false);
+    setActiveSessionId(tempId);
+    setMessages([]);
+
     const data = await apiFetch<{ id: string }>('/api/chat/sessions', {
       method: 'POST',
       body: JSON.stringify(body),
     });
     await mutateSessions();
     setActiveSessionId(data.id);
-    setMessages([]);
-  }, [mutateSessions, projectScope]);
+  }, [mutateSessions, sessions, projectScope]);
 
   const renameSession = useCallback(async (id: string, name: string) => {
-    await apiFetch(`/api/chat/sessions/${id}`, {
+    // Optimistic: update session name instantly
+    const optimistic = (sessions || []).map(s =>
+      s.id === id ? { ...s, name } : s
+    );
+    mutateSessions(optimistic, false);
+
+    apiFetch(`/api/chat/sessions/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ name }),
-    });
-    mutateSessions();
-  }, [mutateSessions]);
+    }).then(() => mutateSessions());
+  }, [sessions, mutateSessions]);
 
   const deleteSession = useCallback(async (id: string) => {
-    await apiFetch(`/api/chat/sessions/${id}`, { method: 'DELETE' });
-    await mutateSessions();
+    // Optimistic: remove session instantly
+    const optimistic = (sessions || []).filter(s => s.id !== id);
+    mutateSessions(optimistic, false);
+
     if (activeSessionId === id) {
       setActiveSessionId(null);
       setMessages([]);
     }
-  }, [activeSessionId, mutateSessions]);
+
+    apiFetch(`/api/chat/sessions/${id}`, { method: 'DELETE' }).then(() => mutateSessions());
+  }, [activeSessionId, sessions, mutateSessions]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!effectiveSessionId || loading) return;
@@ -110,8 +134,9 @@ export function useChat() {
 
   const clearMessages = useCallback(async () => {
     if (!effectiveSessionId) return;
-    await apiFetch(`/api/chat/sessions/${effectiveSessionId}/messages`, { method: 'DELETE' });
+    // Optimistic: clear messages instantly
     setMessages([]);
+    apiFetch(`/api/chat/sessions/${effectiveSessionId}/messages`, { method: 'DELETE' });
   }, [effectiveSessionId]);
 
   const createProjectChat = useCallback(async (taskId: string, taskName: string) => {

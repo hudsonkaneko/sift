@@ -110,9 +110,12 @@ export function useSchedule() {
   }, [slots, mutateSlots]);
 
   const deleteSlot = useCallback(async (id: string) => {
-    await apiFetch(`/api/scheduled-slots/${id}`, { method: 'DELETE' });
-    mutateSlots();
-  }, [mutateSlots]);
+    // Optimistic delete: remove slot from calendar instantly
+    const optimistic = (slots || []).filter(s => s.id !== id);
+    mutateSlots(optimistic, false);
+
+    apiFetch(`/api/scheduled-slots/${id}`, { method: 'DELETE' }).then(() => mutateSlots());
+  }, [slots, mutateSlots]);
 
   const mergeMove = useCallback(async (
     slotId: string,
@@ -120,12 +123,24 @@ export function useSchedule() {
     targetStartHour: number,
     targetStartMinute: number,
   ) => {
-    await apiFetch('/api/scheduled-slots/merge-move', {
+    // Optimistic: move the slot to its new position immediately
+    const slot = (slots || []).find(s => s.id === slotId);
+    if (slot) {
+      const duration = (slot.endHour * 60 + slot.endMinute) - (slot.startHour * 60 + slot.startMinute);
+      const newEndTotal = targetStartHour * 60 + targetStartMinute + duration;
+      const optimistic = (slots || []).map(s =>
+        s.id === slotId
+          ? { ...s, dayOfWeek: targetDay, startHour: targetStartHour, startMinute: targetStartMinute, endHour: Math.floor(newEndTotal / 60), endMinute: newEndTotal % 60, locked: true }
+          : s
+      );
+      mutateSlots(optimistic, false);
+    }
+
+    apiFetch('/api/scheduled-slots/merge-move', {
       method: 'POST',
       body: JSON.stringify({ slotId, targetDay, targetStartHour, targetStartMinute, weekOf }),
-    });
-    mutateSlots();
-  }, [weekOf, mutateSlots]);
+    }).then(() => mutateSlots());
+  }, [slots, weekOf, mutateSlots]);
 
   const generateSchedule = useCallback(async () => {
     setGenerating(true);

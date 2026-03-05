@@ -50,11 +50,14 @@ export function useGoogleCalendar() {
   };
 
   const disconnect = async (googleEmail: string) => {
-    await apiFetch('/api/google-calendar/disconnect', {
+    // Optimistic: remove account from list instantly
+    const optimistic = { accounts: accounts.filter(a => a.googleEmail !== googleEmail) };
+    mutate(optimistic, false);
+
+    apiFetch('/api/google-calendar/disconnect', {
       method: 'POST',
       body: JSON.stringify({ googleEmail }),
-    });
-    mutate();
+    }).then(() => mutate());
   };
 
   return { accounts, hasAccounts, syncing, isLoading, error, sync, disconnect, mutate };

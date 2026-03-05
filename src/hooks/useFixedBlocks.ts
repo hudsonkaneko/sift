@@ -18,11 +18,24 @@ export function useFixedBlocks(weekOf?: string) {
   const { data: fixedBlocks, error, isLoading, mutate } = useSWR(key, fetcher);
 
   const addFixedBlock = async (block: Omit<FixedBlock, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'googleEventId' | 'googleCalendarId' | 'specificDate'>) => {
-    await apiFetch('/api/fixed-blocks', {
+    // Optimistic: show block on calendar instantly
+    const now = new Date().toISOString();
+    const tempBlock: FixedBlock = {
+      ...block,
+      id: `temp-${Date.now()}`,
+      userId: '',
+      googleEventId: null,
+      googleCalendarId: null,
+      specificDate: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mutate([...(fixedBlocks || []), tempBlock], false);
+
+    apiFetch('/api/fixed-blocks', {
       method: 'POST',
       body: JSON.stringify(block),
-    });
-    mutate();
+    }).then(() => mutate());
   };
 
   const updateFixedBlock = async (id: string, updates: Partial<FixedBlock>) => {

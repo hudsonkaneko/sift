@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import type { SchedulingPreferences, GoogleCalendarAccount } from '@/lib/types/domain';
+import { useState, useRef } from 'react';
+import type { SchedulingPreferences, GoogleCalendarAccount, ColorPaletteConfig, ColorTheme } from '@/lib/types/domain';
 import { COLOR_PALETTE } from '@/lib/utils/format';
 
 interface Props {
@@ -20,6 +20,70 @@ export default function SettingsPanel({ preferences, onUpdate, onClose, gcal }: 
   const [prefs, setPrefs] = useState<SchedulingPreferences>({ ...preferences });
   const [newRule, setNewRule] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingThemeName, setEditingThemeName] = useState<string | null>(null);
+  const [editingColorIndex, setEditingColorIndex] = useState<number | null>(null);
+  const colorPickerRef = useRef<HTMLInputElement>(null);
+
+  const activeTheme = prefs.colorPalette
+    ? prefs.colorPalette.themes.find(t => t.id === prefs.colorPalette!.activeThemeId) ?? prefs.colorPalette.themes[0]
+    : null;
+
+  const updateActiveTheme = (updater: (theme: ColorTheme) => ColorTheme) => {
+    setPrefs(p => {
+      if (!p.colorPalette || !activeTheme) return p;
+      return {
+        ...p,
+        colorPalette: {
+          ...p.colorPalette,
+          themes: p.colorPalette.themes.map(t =>
+            t.id === activeTheme.id ? updater(t) : t
+          ),
+        },
+      };
+    });
+  };
+
+  const makeDefaultConfig = (): ColorPaletteConfig => {
+    const id = crypto.randomUUID();
+    return {
+      activeThemeId: id,
+      themes: [{ id, name: 'My Palette', colors: COLOR_PALETTE.map(c => c.hex) }],
+    };
+  };
+
+  const addTheme = () => {
+    const id = crypto.randomUUID();
+    const newTheme: ColorTheme = { id, name: 'New Palette', colors: COLOR_PALETTE.map(c => c.hex) };
+    setPrefs(p => {
+      if (!p.colorPalette) return p;
+      return {
+        ...p,
+        colorPalette: {
+          activeThemeId: id,
+          themes: [...p.colorPalette.themes, newTheme],
+        },
+      };
+    });
+  };
+
+  const deleteTheme = (themeId: string) => {
+    setPrefs(p => {
+      if (!p.colorPalette || p.colorPalette.themes.length <= 1) return p;
+      const remaining = p.colorPalette.themes.filter(t => t.id !== themeId);
+      return {
+        ...p,
+        colorPalette: {
+          activeThemeId: p.colorPalette.activeThemeId === themeId ? remaining[0].id : p.colorPalette.activeThemeId,
+          themes: remaining,
+        },
+      };
+    });
+  };
+
+  const openPickerForIndex = (index: number) => {
+    setEditingColorIndex(index);
+    setTimeout(() => colorPickerRef.current?.click(), 0);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -169,7 +233,7 @@ export default function SettingsPanel({ preferences, onUpdate, onClose, gcal }: 
               <p className="text-[11px] text-text-muted mt-1">
                 All colors active.{' '}
                 <button
-                  onClick={() => setPrefs(p => ({ ...p, colorPalette: COLOR_PALETTE.map(c => c.hex) }))}
+                  onClick={() => setPrefs(p => ({ ...p, colorPalette: makeDefaultConfig() }))}
                   className="text-accent hover:underline"
                 >
                   Click to customize
@@ -186,76 +250,181 @@ export default function SettingsPanel({ preferences, onUpdate, onClose, gcal }: 
                     Reset to defaults
                   </button>
                 </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {COLOR_PALETTE.map(({ hex, name }) => {
-                    const selected = prefs.colorPalette!.includes(hex);
-                    const isLast = selected && prefs.colorPalette!.length === 1;
-                    return (
-                      <button
-                        key={hex}
-                        title={isLast ? `${name} (at least 1 required)` : name}
-                        onClick={() => {
-                          if (isLast) return;
-                          setPrefs(p => ({
-                            ...p,
-                            colorPalette: selected
-                              ? p.colorPalette!.filter(c => c !== hex)
-                              : [...p.colorPalette!, hex],
-                          }));
-                        }}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                          isLast ? 'cursor-not-allowed' : 'cursor-pointer'
-                        }`}
-                        style={{
-                          backgroundColor: hex,
-                          boxShadow: selected ? `0 0 0 2px var(--color-bg-primary), 0 0 0 4px ${hex}` : 'none',
-                          opacity: selected ? 1 : 0.35,
-                        }}
-                      >
-                        {selected && (
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M2 7l3.5 3.5L12 4" />
-                          </svg>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-3 flex items-center gap-2">
-                  <label className="text-[11px] text-text-muted">Custom:</label>
-                  <input
-                    type="color"
-                    onChange={e => {
-                      const hex = e.target.value;
-                      if (!prefs.colorPalette!.includes(hex)) {
-                        setPrefs(p => ({ ...p, colorPalette: [...p.colorPalette!, hex] }));
-                      }
-                    }}
-                    className="w-7 h-7 rounded-md border border-border cursor-pointer bg-transparent"
-                  />
-                </div>
-                {prefs.colorPalette.filter(c => !COLOR_PALETTE.some(p => p.hex === c)).length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {prefs.colorPalette.filter(c => !COLOR_PALETTE.some(p => p.hex === c)).map(hex => (
-                      <button
-                        key={hex}
-                        title={`Remove ${hex}`}
-                        onClick={() => {
-                          if (prefs.colorPalette!.length === 1) return;
-                          setPrefs(p => ({ ...p, colorPalette: p.colorPalette!.filter(c => c !== hex) }));
-                        }}
-                        className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all"
-                        style={{
-                          backgroundColor: hex,
-                          boxShadow: `0 0 0 2px var(--color-bg-primary), 0 0 0 4px ${hex}`,
-                        }}
-                      >
-                        <svg width="10" height="10" viewBox="0 0 10 10" stroke="white" strokeWidth="1.5">
-                          <path d="M1 1l8 8M9 1L1 9" />
-                        </svg>
-                      </button>
+
+                {/* Theme selector */}
+                <div className="mt-2 flex items-center gap-2">
+                  <select
+                    value={prefs.colorPalette.activeThemeId}
+                    onChange={e => setPrefs(p => ({
+                      ...p,
+                      colorPalette: { ...p.colorPalette!, activeThemeId: e.target.value },
+                    }))}
+                    className="flex-1 bg-bg-secondary border border-border rounded-xl px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+                  >
+                    {prefs.colorPalette.themes.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
+                  </select>
+                  <button
+                    onClick={addTheme}
+                    title="Add new theme"
+                    className="w-7 h-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M7 1v12M1 7h12" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => deleteTheme(prefs.colorPalette!.activeThemeId)}
+                    disabled={prefs.colorPalette.themes.length <= 1}
+                    title="Delete theme"
+                    className="w-7 h-7 flex items-center justify-center rounded-md text-text-muted hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" strokeWidth="1.5" fill="none">
+                      <path d="M2 4h10M5 4V2.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5V4M3 4l.5 8.5a1 1 0 001 .5h5a1 1 0 001-.5L11 4" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Editable theme name */}
+                {activeTheme && (
+                  <div className="mt-1.5">
+                    {editingThemeName === activeTheme.id ? (
+                      <input
+                        autoFocus
+                        value={activeTheme.name}
+                        onChange={e => {
+                          const val = e.target.value;
+                          updateActiveTheme(t => ({ ...t, name: val }));
+                        }}
+                        onBlur={() => setEditingThemeName(null)}
+                        onKeyDown={e => { if (e.key === 'Enter') setEditingThemeName(null); }}
+                        className="bg-bg-secondary border border-border rounded-md px-2 py-0.5 text-xs text-text-primary focus:outline-none focus:border-accent w-full"
+                      />
+                    ) : (
+                      <button
+                        onClick={() => setEditingThemeName(activeTheme.id)}
+                        className="text-[11px] text-text-muted hover:text-text-primary transition-colors"
+                        title="Click to rename"
+                      >
+                        {activeTheme.name} (click to rename)
+                      </button>
+                    )}
                   </div>
+                )}
+
+                {/* Preset swatches */}
+                {activeTheme && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {COLOR_PALETTE.map(({ hex, name }) => {
+                      const selected = activeTheme.colors.includes(hex);
+                      const isLast = selected && activeTheme.colors.length === 1;
+                      return (
+                        <button
+                          key={hex}
+                          title={isLast ? `${name} (at least 1 required)` : name}
+                          onClick={() => {
+                            if (isLast) return;
+                            updateActiveTheme(t => ({
+                              ...t,
+                              colors: selected
+                                ? t.colors.filter(c => c !== hex)
+                                : [...t.colors, hex],
+                            }));
+                          }}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                            isLast ? 'cursor-not-allowed' : 'cursor-pointer'
+                          }`}
+                          style={{
+                            backgroundColor: hex,
+                            boxShadow: selected ? `0 0 0 2px var(--color-bg-primary), 0 0 0 4px ${hex}` : 'none',
+                            opacity: selected ? 1 : 0.35,
+                          }}
+                        >
+                          {selected && (
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M2 7l3.5 3.5L12 4" />
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Custom colors row */}
+                {activeTheme && (
+                  <>
+                    <div className="mt-3">
+                      <label className="text-[11px] text-text-muted">Custom colors:</label>
+                      <div className="mt-1 flex flex-wrap gap-2 items-center">
+                        {activeTheme.colors
+                          .map((hex, idx) => ({ hex, idx }))
+                          .filter(({ hex }) => !COLOR_PALETTE.some(p => p.hex === hex))
+                          .map(({ hex, idx }) => (
+                            <div key={`${hex}-${idx}`} className="relative group">
+                              <button
+                                onClick={() => openPickerForIndex(idx)}
+                                className="w-8 h-8 rounded-full cursor-pointer transition-all"
+                                style={{
+                                  backgroundColor: hex,
+                                  boxShadow: `0 0 0 2px var(--color-bg-primary), 0 0 0 4px ${hex}`,
+                                }}
+                                title={`Edit ${hex}`}
+                              />
+                              <button
+                                onClick={() => {
+                                  if (activeTheme.colors.length <= 1) return;
+                                  updateActiveTheme(t => ({
+                                    ...t,
+                                    colors: t.colors.filter((_, i) => i !== idx),
+                                  }));
+                                }}
+                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-bg-primary border border-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Remove"
+                              >
+                                <svg width="8" height="8" viewBox="0 0 8 8" stroke="currentColor" strokeWidth="1.5">
+                                  <path d="M1 1l6 6M7 1L1 7" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        {/* Add custom color button */}
+                        <button
+                          onClick={() => {
+                            const newColor = '#808080';
+                            updateActiveTheme(t => ({ ...t, colors: [...t.colors, newColor] }));
+                            // Open picker for the newly added color after state update
+                            setTimeout(() => {
+                              setEditingColorIndex(activeTheme.colors.length);
+                              setTimeout(() => colorPickerRef.current?.click(), 0);
+                            }, 0);
+                          }}
+                          className="w-8 h-8 rounded-full border-2 border-dashed border-border flex items-center justify-center text-text-muted hover:text-text-primary hover:border-text-muted transition-colors cursor-pointer"
+                          title="Add custom color"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.5">
+                            <path d="M6 1v10M1 6h10" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    {/* Hidden color picker — edits in place */}
+                    <input
+                      ref={colorPickerRef}
+                      type="color"
+                      value={editingColorIndex !== null && activeTheme.colors[editingColorIndex] ? activeTheme.colors[editingColorIndex] : '#808080'}
+                      onChange={e => {
+                        if (editingColorIndex === null) return;
+                        const hex = e.target.value;
+                        updateActiveTheme(t => ({
+                          ...t,
+                          colors: t.colors.map((c, i) => i === editingColorIndex ? hex : c),
+                        }));
+                      }}
+                      className="sr-only"
+                    />
+                  </>
                 )}
               </>
             )}

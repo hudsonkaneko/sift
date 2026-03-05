@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Search, Send, Trash2, Pencil } from 'lucide-react';
+import { Plus, Search, Send, Trash2, Pencil, ArrowLeft } from 'lucide-react';
 import { useUser } from '@clerk/nextjs';
 import type { ChatMessage, ChatSession } from '@/lib/types/domain';
 import MultipleChoiceWidget from './MultipleChoiceWidget';
@@ -22,6 +22,8 @@ interface Props {
   onRenameSession: (id: string, name: string) => void;
   onDeleteSession: (id: string) => void;
   loading: boolean;
+  projectScope: { taskId: string; taskName: string } | null;
+  onExitProjectScope: () => void;
 }
 
 export default function ChatPanel({
@@ -35,6 +37,8 @@ export default function ChatPanel({
   onRenameSession,
   onDeleteSession,
   loading,
+  projectScope,
+  onExitProjectScope,
 }: Props) {
   const { user } = useUser();
   const [input, setInput] = useState('');
@@ -94,7 +98,17 @@ export default function ChatPanel({
       {/* Sidebar header */}
       <div className="px-5 pt-5 pb-3">
         <div className="mb-6">
-          <span className="text-xl font-bold text-accent">Sift</span>
+          {projectScope ? (
+            <button
+              onClick={onExitProjectScope}
+              className="flex items-center gap-2 text-text-primary hover:text-accent transition-colors group"
+            >
+              <ArrowLeft size={18} className="text-text-muted group-hover:text-accent transition-colors" />
+              <span className="text-base font-semibold truncate max-w-[280px]">{projectScope.taskName}</span>
+            </button>
+          ) : (
+            <span className="text-xl font-bold text-accent">Sift</span>
+          )}
         </div>
 
         <div className="space-y-0.5">

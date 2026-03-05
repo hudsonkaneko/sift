@@ -92,6 +92,7 @@ export interface ChatSession {
   id: string; // UUID
   userId: string;
   name: string;
+  taskId: string | null; // null = general chat, UUID = project-scoped chat
   createdAt: string;
   updatedAt: string;
 }
@@ -106,6 +107,17 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface ColorTheme {
+  id: string;       // crypto.randomUUID()
+  name: string;     // "My Palette", "Professional", etc.
+  colors: string[];
+}
+
+export interface ColorPaletteConfig {
+  activeThemeId: string;
+  themes: ColorTheme[]; // min 1
+}
+
 export interface SchedulingPreferences {
   id: string;
   userId: string;
@@ -116,7 +128,7 @@ export interface SchedulingPreferences {
   preferEvenings: boolean;
   avoidWeekends: boolean;
   customRules: string[];
-  colorPalette: string[] | null;
+  colorPalette: ColorPaletteConfig | null;
   createdAt: string;
   updatedAt: string;
 }

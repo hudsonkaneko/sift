@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/utils/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { randomColor } from '@/lib/utils/format';
+import { normalizeColorPalette } from '@/lib/utils/db';
 
 // GET /api/tasks — fetch all tasks for the authenticated user
 export async function GET() {
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
     .select('color_palette')
     .eq('user_id', userId)
     .single();
-  const userPalette: string[] | null = prefsRow?.color_palette ?? null;
+  const userPalette = normalizeColorPalette(prefsRow?.color_palette ?? null);
 
   // Determine color: explicit > inherit from parent > random for top-level
   let color: string | null = body.color || null;

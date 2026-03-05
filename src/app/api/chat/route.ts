@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/utils/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { processChatMessage } from '@/lib/ai/claude';
+import type { ProjectContext } from '@/lib/ai/claude';
 import { preprocessBraindump, buildEnhancedMessage } from '@/lib/ai/preprocessor';
-import { mapTask, mapPreferences } from '@/lib/utils/db';
+import { mapTask, mapPreferences, normalizeColorPalette } from '@/lib/utils/db';
 import { randomColor } from '@/lib/utils/format';
 import type { ChatMessage, UserTone } from '@/lib/types/domain';
 
@@ -18,6 +19,69 @@ export async function POST(req: Request) {
   }
 
   const supabase = createServiceClient();
+
+  // Check if this is a project-scoped session
+  let projectContext: ProjectContext | undefined;
+  const { data: sessionRow } = await supabase
+    .from('chat_sessions')
+    .select('task_id')
+    .eq('id', sessionId)
+    .eq('user_id', userId)
+    .single();
+
+  if (sessionRow?.task_id) {
+    const taskId = sessionRow.task_id;
+
+    // Fetch parent task
+    const { data: parentRow } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('id', taskId)
+      .single();
+
+    if (parentRow) {
+      // Fetch subtasks
+      const { data: subtaskRows } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('parent_id', taskId);
+
+      // Fetch cross-session memory (messages from OTHER sessions in same project)
+      const { data: otherSessions } = await supabase
+        .from('chat_sessions')
+        .select('id')
+        .eq('task_id', taskId)
+        .eq('user_id', userId)
+        .neq('id', sessionId);
+
+      let memoryMessages: ChatMessage[] = [];
+      if (otherSessions && otherSessions.length > 0) {
+        const otherSessionIds = otherSessions.map(s => s.id);
+        const { data: memoryRows } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .in('session_id', otherSessionIds)
+          .eq('user_id', userId)
+          .order('created_at', { ascending: true });
+
+        memoryMessages = (memoryRows || []).map(r => ({
+          id: r.id,
+          sessionId: r.session_id,
+          userId: r.user_id,
+          role: r.role,
+          content: r.content,
+          metadata: r.metadata || {},
+          createdAt: r.created_at,
+        }));
+      }
+
+      projectContext = {
+        task: mapTask(parentRow),
+        subtasks: (subtaskRows || []).map(mapTask),
+        memory: memoryMessages,
+      };
+    }
+  }
 
   // Fetch chat history for this session
   const { data: historyRows } = await supabase
@@ -64,7 +128,7 @@ export async function POST(req: Request) {
       preferMornings: true, preferEvenings: true, avoidWeekends: false,
       customRules: [], colorPalette: null, createdAt: '', updatedAt: '',
     };
-    const userPalette = prefsRow?.color_palette ?? null;
+    const userPalette = normalizeColorPalette(prefsRow?.color_palette ?? null);
 
     // Get user tone
     const { data: userRow } = await supabase
@@ -79,7 +143,7 @@ export async function POST(req: Request) {
     const enhancedMessage = buildEnhancedMessage(message, preprocessed);
 
     // Call AI
-    const result = await processChatMessage(enhancedMessage, existingTasks, currentPrefs, chatHistory, tone);
+    const result = await processChatMessage(enhancedMessage, existingTasks, currentPrefs, chatHistory, tone, projectContext);
 
     const actions: string[] = [];
     console.log('[chat] AI result:', { newTasks: result.newTasks.length, taskUpdates: result.taskUpdates.length, newBlocks: result.newBlocks.length });

@@ -5,6 +5,12 @@ import { buildSystemPrompt } from './system-prompts';
 const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
 const MAX_HISTORY_MESSAGES = 20;
 
+export interface ProjectContext {
+  task: Task;
+  subtasks: Task[];
+  memory: ChatMessage[];
+}
+
 interface MessagePair {
   role: 'user' | 'assistant';
   content: string;
@@ -64,6 +70,7 @@ export async function processChatMessage(
   currentPrefs: SchedulingPreferences,
   chatHistory: ChatMessage[],
   tone: UserTone = 'friendly',
+  projectContext?: ProjectContext,
 ): Promise<ChatProcessResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -71,7 +78,7 @@ export async function processChatMessage(
   }
 
   const client = new Anthropic({ apiKey });
-  const system = buildSystemPrompt(tone, existingTasks, currentPrefs);
+  const system = buildSystemPrompt(tone, existingTasks, currentPrefs, projectContext);
   const history = buildHistory(chatHistory);
   const messages: MessagePair[] = [...history, { role: 'user', content: input }];
 

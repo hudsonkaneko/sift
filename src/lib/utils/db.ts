@@ -1,4 +1,4 @@
-import type { Task, FixedBlock, ScheduledSlot, SchedulingPreferences, GoogleCalendarSource, GoogleCalendarAccount } from '@/lib/types/domain';
+import type { Task, FixedBlock, ScheduledSlot, SchedulingPreferences, GoogleCalendarSource, GoogleCalendarAccount, ColorPaletteConfig, ChatSession } from '@/lib/types/domain';
 
 /**
  * Map a Supabase snake_case row to a camelCase domain object.
@@ -74,6 +74,18 @@ export function mapGoogleCalendarSource(row: any): GoogleCalendarSource {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function mapChatSession(row: any): ChatSession {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    taskId: row.task_id ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapScheduledSlot(row: any): ScheduledSlot {
   return {
     id: row.id,
@@ -92,6 +104,24 @@ export function mapScheduledSlot(row: any): ScheduledSlot {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function normalizeColorPalette(raw: any): ColorPaletteConfig | null {
+  if (!raw) return null;
+  // Old format: string[]
+  if (Array.isArray(raw)) {
+    const id = crypto.randomUUID();
+    return {
+      activeThemeId: id,
+      themes: [{ id, name: 'My Palette', colors: raw }],
+    };
+  }
+  // New format: { activeThemeId, themes }
+  if (raw.activeThemeId && Array.isArray(raw.themes)) {
+    return raw as ColorPaletteConfig;
+  }
+  return null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapPreferences(row: any): SchedulingPreferences {
   return {
     id: row.id,
@@ -103,7 +133,7 @@ export function mapPreferences(row: any): SchedulingPreferences {
     preferEvenings: row.prefer_evenings,
     avoidWeekends: row.avoid_weekends,
     customRules: row.custom_rules || [],
-    colorPalette: row.color_palette || null,
+    colorPalette: normalizeColorPalette(row.color_palette),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

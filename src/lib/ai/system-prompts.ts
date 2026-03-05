@@ -1,4 +1,5 @@
 import type { Task, SchedulingPreferences, UserTone } from '@/lib/types/domain';
+import type { ProjectContext } from './claude';
 
 const TONE_PREFIXES: Record<UserTone, string> = {
   friendly: 'You are a warm, encouraging schedule planning assistant. Use a casual but supportive tone. Celebrate small wins.',
@@ -11,6 +12,7 @@ export function buildSystemPrompt(
   tone: UserTone,
   existingTasks: Task[],
   currentPrefs: SchedulingPreferences,
+  projectContext?: ProjectContext,
 ): string {
   const today = new Date().toISOString().split('T')[0];
   const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()];
@@ -30,7 +32,20 @@ Current scheduling preferences:
 - Custom rules: ${JSON.stringify(currentPrefs.customRules)}
 
 Categories: School, Startup (Axion), Collab (Project Play), Personal.
+${projectContext ? `
+PROJECT CONTEXT — This is a project-scoped chat for:
+- Task: "${projectContext.task.name}" [${projectContext.task.category}]
+- Deadline: ${projectContext.task.deadline || 'none'}
+- Recurrence: ${projectContext.task.recurrence}
+- Urgency: ${projectContext.task.urgency}
+- Completed: ${projectContext.task.completed}
+${projectContext.subtasks.length > 0 ? `Subtasks:\n${projectContext.subtasks.map(s => `  • "${s.name}" [${s.category}] ${s.estimatedMinutes}min, deadline: ${s.deadline || 'none'}, completed: ${s.completed}`).join('\n')}` : 'No subtasks yet.'}
 
+Focus responses on THIS project. Default new tasks as subtasks of this project (use parentId: "${projectContext.task.id}").
+${projectContext.memory.length > 0 ? `
+PROJECT MEMORY — Messages from other chats in this project (for continuity):
+${projectContext.memory.slice(-30).map(m => `[${m.role}]: ${m.content.slice(0, 200)}`).join('\n')}
+` : ''}` : ''}
 You MUST respond with a single JSON object (no markdown fences). The JSON has these fields — include ALL of them every time, using empty arrays/null when nothing applies:
 
 {

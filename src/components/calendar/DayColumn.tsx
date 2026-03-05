@@ -136,7 +136,7 @@ export default function DayColumn({
               ...getOverlapStyle(block.id),
             }}
             onMouseDown={e => {
-              if (!isUserEvent) return;
+              if (!isUserEvent || e.button !== 0) return;
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
               if (e.clientY > rect.bottom - 8) {
                 onBlockMouseDown(e, block, 'resize-bottom');
@@ -197,6 +197,7 @@ export default function DayColumn({
               ...getOverlapStyle(slot.id),
             }}
             onMouseDown={e => {
+              if (e.button !== 0) return;
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
               if (e.clientY > rect.bottom - 8) {
                 onSlotMouseDown(e, slot, 'resize-bottom');

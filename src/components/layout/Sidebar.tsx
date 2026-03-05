@@ -14,6 +14,8 @@ interface Props {
   onRenameSession: (id: string, name: string) => void;
   onDeleteSession: (id: string) => void;
   loading: boolean;
+  projectScope: { taskId: string; taskName: string } | null;
+  onExitProjectScope: () => void;
 }
 
 export default function Sidebar({
@@ -27,6 +29,8 @@ export default function Sidebar({
   onRenameSession,
   onDeleteSession,
   loading,
+  projectScope,
+  onExitProjectScope,
 }: Props) {
   return (
     <div className="w-[400px] min-w-[360px] flex flex-col bg-bg-primary border-r border-border">
@@ -41,6 +45,8 @@ export default function Sidebar({
         onRenameSession={onRenameSession}
         onDeleteSession={onDeleteSession}
         loading={loading}
+        projectScope={projectScope}
+        onExitProjectScope={onExitProjectScope}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import type { TaskCategory } from '@/lib/types/domain';
+import type { TaskCategory, ColorPaletteConfig } from '@/lib/types/domain';
 
 export const CATEGORY_HEX: Record<TaskCategory, string> = {
   School: '#4ea8de',
@@ -49,8 +49,15 @@ export function formatDeadline(deadline: string | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function randomColor(palette?: string[] | null): string {
-  const colors = palette?.length ? palette : COLOR_PALETTE.map(c => c.hex);
+export function getActiveColors(config: ColorPaletteConfig | null): string[] {
+  if (!config) return COLOR_PALETTE.map(c => c.hex);
+  const active = config.themes.find(t => t.id === config.activeThemeId);
+  const colors = active?.colors;
+  return colors?.length ? colors : COLOR_PALETTE.map(c => c.hex);
+}
+
+export function randomColor(palette?: ColorPaletteConfig | null): string {
+  const colors = getActiveColors(palette ?? null);
   return colors[Math.floor(Math.random() * colors.length)];
 }
 

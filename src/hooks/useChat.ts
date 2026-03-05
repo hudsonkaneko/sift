@@ -8,7 +8,13 @@ import type { ChatSession, ChatMessage } from '@/lib/types/domain';
 const sessionsFetcher = (url: string) => apiFetch<ChatSession[]>(url);
 
 export function useChat() {
-  const { data: sessions, mutate: mutateSessions } = useSWR('/api/chat/sessions', sessionsFetcher);
+  const [projectScope, setProjectScope] = useState<{ taskId: string; taskName: string } | null>(null);
+
+  const sessionsKey = projectScope
+    ? `/api/chat/sessions?taskId=${projectScope.taskId}`
+    : '/api/chat/sessions?taskId=';
+
+  const { data: sessions, mutate: mutateSessions } = useSWR(sessionsKey, sessionsFetcher);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -36,14 +42,18 @@ export function useChat() {
   }, [fetchMessages]);
 
   const createSession = useCallback(async () => {
+    const body: Record<string, string> = { name: 'New Chat' };
+    if (projectScope) {
+      body.taskId = projectScope.taskId;
+    }
     const data = await apiFetch<{ id: string }>('/api/chat/sessions', {
       method: 'POST',
-      body: JSON.stringify({ name: 'New Chat' }),
+      body: JSON.stringify(body),
     });
     await mutateSessions();
     setActiveSessionId(data.id);
     setMessages([]);
-  }, [mutateSessions]);
+  }, [mutateSessions, projectScope]);
 
   const renameSession = useCallback(async (id: string, name: string) => {
     await apiFetch(`/api/chat/sessions/${id}`, {
@@ -100,11 +110,31 @@ export function useChat() {
     setMessages([]);
   }, [effectiveSessionId]);
 
+  const createProjectChat = useCallback(async (taskId: string, taskName: string) => {
+    setProjectScope({ taskId, taskName });
+    setActiveSessionId(null);
+    setMessages([]);
+    // Create the first session for this project
+    const data = await apiFetch<{ id: string }>('/api/chat/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'New Chat', taskId }),
+    });
+    await mutateSessions();
+    setActiveSessionId(data.id);
+  }, [mutateSessions]);
+
+  const exitProjectScope = useCallback(() => {
+    setProjectScope(null);
+    setActiveSessionId(null);
+    setMessages([]);
+  }, []);
+
   return {
     sessions: sessions || [],
     activeSessionId: effectiveSessionId,
     messages,
     loading,
+    projectScope,
     switchSession,
     createSession,
     renameSession,
@@ -112,5 +142,7 @@ export function useChat() {
     sendMessage,
     clearMessages,
     fetchMessages,
+    createProjectChat,
+    exitProjectScope,
   };
 }

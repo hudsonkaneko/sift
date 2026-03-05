@@ -44,6 +44,7 @@ export default function DashboardLayout({
     activeSessionId,
     messages,
     loading: chatLoading,
+    projectScope,
     switchSession,
     createSession,
     renameSession,
@@ -51,6 +52,8 @@ export default function DashboardLayout({
     sendMessage,
     clearMessages,
     fetchMessages,
+    createProjectChat,
+    exitProjectScope,
   } = useChat();
 
   // Auto-sync Google Calendar on week change or initial connect
@@ -131,6 +134,8 @@ export default function DashboardLayout({
           onRenameSession={renameSession}
           onDeleteSession={deleteSession}
           loading={chatLoading}
+          projectScope={projectScope}
+          onExitProjectScope={exitProjectScope}
         />
 
         {/* Main content area */}
@@ -177,6 +182,7 @@ export default function DashboardLayout({
               onSlotUpdate={updateSlot}
               onAddSubtask={addSubtask}
               onDeleteAll={deleteAllTasks}
+              onNewProjectChat={createProjectChat}
             />
           </div>
         </div>

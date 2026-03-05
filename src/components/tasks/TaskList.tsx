@@ -25,6 +25,7 @@ interface TaskListProps {
   onSlotUpdate: (id: string, updates: { locked: boolean }) => void;
   onAddSubtask: (parentId: string, subtask: { name: string; category: TaskCategory; estimatedMinutes: number; deadline: string | null; recurrence: 'none'; color: string | null }) => Promise<Task>;
   onDeleteAll: () => void;
+  onNewProjectChat?: (taskId: string, taskName: string) => void;
 }
 
 export default function TaskList({
@@ -36,6 +37,7 @@ export default function TaskList({
   onSlotUpdate,
   onAddSubtask,
   onDeleteAll,
+  onNewProjectChat,
 }: TaskListProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
@@ -389,17 +391,30 @@ export default function TaskList({
             </button>
 
             {isTopLevel && (
-              <button
-                className="w-full text-left px-3 py-1.5 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2"
-                onClick={() => {
-                  setAddingSubtaskFor(contextMenu.taskId);
-                  setNewSubtaskName('');
-                  setContextMenu(null);
-                  setExpandedParents(prev => { const next = new Set(prev); next.add(contextMenu.taskId); return next; });
-                }}
-              >
-                Add subtask
-              </button>
+              <>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    setAddingSubtaskFor(contextMenu.taskId);
+                    setNewSubtaskName('');
+                    setContextMenu(null);
+                    setExpandedParents(prev => { const next = new Set(prev); next.add(contextMenu.taskId); return next; });
+                  }}
+                >
+                  Add subtask
+                </button>
+                {onNewProjectChat && (
+                  <button
+                    className="w-full text-left px-3 py-1.5 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2"
+                    onClick={() => {
+                      onNewProjectChat(task.id, task.name);
+                      setContextMenu(null);
+                    }}
+                  >
+                    New Chat in Project
+                  </button>
+                )}
+              </>
             )}
 
             {isScheduled && (

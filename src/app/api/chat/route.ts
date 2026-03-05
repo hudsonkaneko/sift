@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { processChatMessage } from '@/lib/ai/claude';
 import { preprocessBraindump, buildEnhancedMessage } from '@/lib/ai/preprocessor';
 import { mapTask, mapPreferences } from '@/lib/utils/db';
+import { randomColor } from '@/lib/utils/format';
 import type { ChatMessage, UserTone } from '@/lib/types/domain';
 
 // POST /api/chat — send a message and get AI response
@@ -86,6 +87,7 @@ export async function POST(req: Request) {
     let tasksAdded = 0;
     let subtasksAdded = 0;
     for (const taskData of result.newTasks) {
+      const parentColor = taskData.color ?? (taskData.parentId ? null : randomColor());
       const { data: parentRow, error: parentErr } = await supabase.from('tasks').insert({
         user_id: userId,
         name: taskData.name,
@@ -94,10 +96,10 @@ export async function POST(req: Request) {
         deadline: taskData.deadline,
         recurrence: taskData.recurrence,
         completed: false,
-        color: taskData.color ?? null,
+        color: parentColor,
         parent_id: taskData.parentId ?? null,
         urgency: taskData.urgency ?? 0,
-      }).select('id').single();
+      }).select('id, color').single();
 
       if (parentErr) {
         console.error('[chat] Task insert failed:', parentErr.message, taskData);
@@ -115,7 +117,7 @@ export async function POST(req: Request) {
             deadline: sub.deadline,
             recurrence: sub.recurrence,
             completed: false,
-            color: sub.color ?? null,
+            color: sub.color ?? parentRow.color ?? null,
             parent_id: parentRow.id,
             urgency: sub.urgency ?? 0,
           });

@@ -180,8 +180,9 @@ export default function DayColumn({
         );
 
         const category = slot.task?.category || 'Personal';
-        const colorClasses = CATEGORY_COLORS[category];
-        const dotClass = CATEGORY_DOT_COLORS[category];
+        const useTaskColor = !!slot.task?.color;
+        const colorClasses = useTaskColor ? '' : CATEGORY_COLORS[category];
+        const dotClass = useTaskColor ? '' : CATEGORY_DOT_COLORS[category];
 
         return (
           <div
@@ -192,6 +193,7 @@ export default function DayColumn({
             style={{
               top: style.top,
               height: style.height,
+              ...(useTaskColor ? hexStyles(slot.task!.color!) : {}),
               ...getOverlapStyle(slot.id),
             }}
             onMouseDown={e => {
@@ -208,7 +210,10 @@ export default function DayColumn({
             }}
           >
             <div className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotClass}`} />
+              <span
+                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotClass}`}
+                style={useTaskColor ? { backgroundColor: slot.task!.color! } : undefined}
+              />
               <span className="font-medium truncate">{slot.task?.name || 'Task'}</span>
               {slot.locked && (
                 <Lock size={10} className="text-amber-500 flex-shrink-0" />
@@ -227,26 +232,34 @@ export default function DayColumn({
       })}
 
       {/* Slot drag preview — shows on whichever day the cursor is over */}
-      {dragState && dragState.previewDayOfWeek === dayIndex && (
-        <div
-          className={`absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight ring-2 ring-accent z-30 pointer-events-none ${
-            CATEGORY_COLORS[dragState.originalSlot.task?.category || 'Personal']
-          }`}
-          style={getBlockStyle(
-            dragState.previewStartHour,
-            dragState.previewStartMinute,
-            dragState.previewEndHour,
-            dragState.previewEndMinute,
-          )}
-        >
-          <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-              CATEGORY_DOT_COLORS[dragState.originalSlot.task?.category || 'Personal']
-            }`} />
-            <span className="font-medium truncate">{dragState.originalSlot.task?.name || 'Task'}</span>
+      {dragState && dragState.previewDayOfWeek === dayIndex && (() => {
+        const dragTaskColor = dragState.originalSlot.task?.color;
+        const dragCategory = dragState.originalSlot.task?.category || 'Personal';
+        return (
+          <div
+            className={`absolute left-1 right-1 rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight ring-2 ring-accent z-30 pointer-events-none ${
+              dragTaskColor ? '' : CATEGORY_COLORS[dragCategory]
+            }`}
+            style={{
+              ...getBlockStyle(
+                dragState.previewStartHour,
+                dragState.previewStartMinute,
+                dragState.previewEndHour,
+                dragState.previewEndMinute,
+              ),
+              ...(dragTaskColor ? hexStyles(dragTaskColor) : {}),
+            }}
+          >
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dragTaskColor ? '' : CATEGORY_DOT_COLORS[dragCategory]}`}
+                style={dragTaskColor ? { backgroundColor: dragTaskColor } : undefined}
+              />
+              <span className="font-medium truncate">{dragState.originalSlot.task?.name || 'Task'}</span>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Block drag preview — shows on whichever day the cursor is over */}
       {blockDrag && blockDrag.previewDayOfWeek === dayIndex && (

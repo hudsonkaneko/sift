@@ -49,6 +49,10 @@ export function formatDeadline(deadline: string | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+export function randomColor(): string {
+  return COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)].hex;
+}
+
 export function formatTime(hour: number, minute: number): string {
   const h = hour % 12 || 12;
   const ampm = hour < 12 ? 'a' : 'p';

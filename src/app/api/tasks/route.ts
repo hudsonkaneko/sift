@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/utils/auth';
 import { createServiceClient } from '@/lib/supabase/server';
+import { randomColor } from '@/lib/utils/format';
 
 // GET /api/tasks — fetch all tasks for the authenticated user
 export async function GET() {
@@ -29,6 +30,20 @@ export async function POST(req: Request) {
   const body = await req.json();
   const supabase = createServiceClient();
 
+  // Determine color: explicit > inherit from parent > random for top-level
+  let color: string | null = body.color || null;
+  if (!color && body.parentId) {
+    const { data: parent } = await supabase
+      .from('tasks')
+      .select('color')
+      .eq('id', body.parentId)
+      .single();
+    color = parent?.color ?? null;
+  }
+  if (!color && !body.parentId) {
+    color = randomColor();
+  }
+
   const { data, error } = await supabase
     .from('tasks')
     .insert({
@@ -39,7 +54,7 @@ export async function POST(req: Request) {
       deadline: body.deadline || null,
       recurrence: body.recurrence || 'none',
       completed: false,
-      color: body.color || null,
+      color,
       parent_id: body.parentId || null,
       urgency: body.urgency || 0,
     })

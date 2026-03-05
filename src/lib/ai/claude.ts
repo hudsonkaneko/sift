@@ -312,6 +312,10 @@ export async function processChatMessage(
       endMinute: (b.endMinute as number) || 0,
       userCreated: false,
       color: null,
+      recurring: true,
+      googleEventId: null,
+      googleCalendarId: null,
+      specificDate: null,
     }));
 
     let preferenceUpdates: Partial<SchedulingPreferences> | null = null;

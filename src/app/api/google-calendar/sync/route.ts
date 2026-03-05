@@ -92,6 +92,25 @@ export async function POST(req: Request) {
 
   console.log(`[gcal/sync] week range: ${weekStartStr} to ${weekEndStr}`);
 
+  // Preserve user-customized colors before deleting old blocks
+  const { data: existingBlocks } = await supabase
+    .from('fixed_blocks')
+    .select('google_event_id, google_calendar_id, color')
+    .eq('user_id', userId)
+    .not('google_event_id', 'is', null)
+    .gte('specific_date', weekStartStr)
+    .lte('specific_date', weekEndStr);
+
+  const preservedColors = new Map<string, string>();
+  if (existingBlocks) {
+    for (const b of existingBlocks) {
+      if (b.color && b.google_event_id && b.google_calendar_id) {
+        preservedColors.set(`${b.google_event_id}::${b.google_calendar_id}`, b.color);
+      }
+    }
+  }
+  console.log(`[gcal/sync] preserved ${preservedColors.size} user-customized color(s)`);
+
   // Delete ALL google-synced blocks for this user in this week range upfront
   // (prevents duplicate key errors when multiple accounts share calendars)
   const { error: deleteAllError, count: deleteAllCount } = await supabase
@@ -297,6 +316,14 @@ export async function POST(req: Request) {
       }
 
       console.log(`[gcal/sync] calendar ${cal.id}: added ${events.length - skippedAllDay - skippedCancelled} blocks (skipped ${skippedAllDay} all-day, ${skippedCancelled} cancelled)`);
+    }
+  }
+
+  // Restore user-customized colors
+  for (const [key, block] of blocksMap) {
+    const savedColor = preservedColors.get(key);
+    if (savedColor && savedColor !== block.color) {
+      block.color = savedColor;
     }
   }
 

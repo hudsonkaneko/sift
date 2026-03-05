@@ -132,7 +132,7 @@ export function useSchedule() {
     try {
       await apiFetch('/api/scheduled-slots/generate', {
         method: 'POST',
-        body: JSON.stringify({ weekOf }),
+        body: JSON.stringify({ weekOf, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
       });
       mutateSlots();
     } finally {

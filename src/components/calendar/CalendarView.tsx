@@ -161,6 +161,7 @@ export default function CalendarView({
     setBlockMenu({
       blockId: block.id,
       blockName: block.name,
+      isGoogleEvent: !block.userCreated,
       x: e.clientX,
       y: e.clientY,
     });
@@ -367,6 +368,7 @@ export default function CalendarView({
           menu={blockMenu}
           onEdit={handleEditBlock}
           onDelete={id => { onBlockDelete(id); setBlockMenu(null); }}
+          onColorChange={(id, color) => { onBlockUpdate(id, { color }); setBlockMenu(null); }}
           onClose={() => setBlockMenu(null)}
         />
       )}

@@ -147,7 +147,6 @@ export default function DayColumn({
               }
             }}
             onContextMenu={e => {
-              if (!isUserEvent) return;
               e.preventDefault();
               onBlockContextMenu(e, block);
             }}

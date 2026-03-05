@@ -61,7 +61,7 @@ export async function POST(req: Request) {
   const [userId, errorResponse] = await requireAuth();
   if (!userId) return errorResponse!;
 
-  const { weekOf } = await req.json();
+  const { weekOf, timezone } = await req.json();
   if (!weekOf) {
     return NextResponse.json({ error: 'weekOf is required' }, { status: 400 });
   }
@@ -110,10 +110,23 @@ export async function POST(req: Request) {
   }
 
   // Sort tasks by priority: deadline proximity + urgency
+  // Use client timezone so "today" and "current time" are correct
+  // (Vercel runs in UTC; without this, a PST user at 2pm would look like 10pm to the server)
   const now = new Date();
-  const todayMidnight = new Date(now);
-  todayMidnight.setHours(0, 0, 0, 0);
-  const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
+  const tz = timezone || 'UTC';
+  const localParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+    weekday: 'short',
+  }).formatToParts(now);
+  const localHour = parseInt(localParts.find(p => p.type === 'hour')!.value);
+  const localMinute = parseInt(localParts.find(p => p.type === 'minute')!.value);
+  const localYear = parseInt(localParts.find(p => p.type === 'year')!.value);
+  const localMonth = parseInt(localParts.find(p => p.type === 'month')!.value);
+  const localDay = parseInt(localParts.find(p => p.type === 'day')!.value);
+  const todayMidnight = new Date(localYear, localMonth - 1, localDay);
+  const currentTimeMinutes = localHour * 60 + localMinute;
 
   function taskPriority(t: { deadline: string | null; urgency: number; estimated_minutes: number }): number {
     let score = t.urgency ?? 0;
@@ -155,7 +168,7 @@ export async function POST(req: Request) {
   }
 
   // Determine day order based on preferences, skipping past days for current week
-  const todayDayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ...
+  const todayDayOfWeek = todayMidnight.getDay(); // 0=Sun, 1=Mon, ...
   const weekOfDate = new Date(weekOf + 'T00:00:00');
   const weekOfSunday = new Date(weekOfDate);
   weekOfSunday.setDate(weekOfSunday.getDate() - weekOfSunday.getDay());
@@ -172,7 +185,14 @@ export async function POST(req: Request) {
 
   // Only schedule on today and future days if generating for the current week
   if (isCurrentWeek) {
-    dayOrder = dayOrder.filter(d => d >= todayDayOfWeek);
+    // dayOrder may have Sunday (0) at the end after weekdays (1-6),
+    // so compare by position in the week relative to today
+    dayOrder = dayOrder.filter(d => {
+      // Treat Sunday (0) as 7 for ordering when it comes after Saturday
+      const dAdj = d === 0 ? 7 : d;
+      const todayAdj = todayDayOfWeek === 0 ? 7 : todayDayOfWeek;
+      return dAdj >= todayAdj;
+    });
   }
 
   const dayStart = earliestHour * 60;

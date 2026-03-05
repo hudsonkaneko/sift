@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Lock, Unlock, Pencil, Trash2 } from 'lucide-react';
+import { Lock, Unlock, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import type { Task } from '@/lib/types/domain';
+import { COLOR_PALETTE } from '@/lib/utils/format';
 
 // ─── Block context menu (Edit / Delete for user-created fixed blocks) ───
 
 export interface BlockMenuState {
   blockId: string;
   blockName: string;
+  isGoogleEvent: boolean;
   x: number;
   y: number;
 }
@@ -17,10 +19,11 @@ interface BlockContextMenuProps {
   menu: BlockMenuState;
   onEdit: (blockId: string) => void;
   onDelete: (blockId: string) => void;
+  onColorChange: (blockId: string, color: string | null) => void;
   onClose: () => void;
 }
 
-export function BlockContextMenu({ menu, onEdit, onDelete, onClose }: BlockContextMenuProps) {
+export function BlockContextMenu({ menu, onEdit, onDelete, onColorChange, onClose }: BlockContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +35,7 @@ export function BlockContextMenu({ menu, onEdit, onDelete, onClose }: BlockConte
   }, [onClose]);
 
   const menuWidth = 180;
-  const menuHeight = 88;
+  const menuHeight = menu.isGoogleEvent ? 80 : 88;
   const x = Math.min(menu.x, window.innerWidth - menuWidth - 8);
   const y = Math.min(menu.y, window.innerHeight - menuHeight - 8);
 
@@ -43,20 +46,46 @@ export function BlockContextMenu({ menu, onEdit, onDelete, onClose }: BlockConte
       style={{ left: x, top: y }}
     >
       <p className="px-2.5 py-1 text-xs text-text-muted truncate">{menu.blockName}</p>
-      <button
-        onClick={() => { onEdit(menu.blockId); onClose(); }}
-        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-text-primary hover:bg-bg-tertiary transition-colors"
-      >
-        <Pencil size={14} className="text-text-muted" />
-        Edit
-      </button>
-      <button
-        onClick={() => { onDelete(menu.blockId); onClose(); }}
-        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-red-400 hover:bg-bg-tertiary transition-colors"
-      >
-        <Trash2 size={14} />
-        Delete
-      </button>
+
+      {menu.isGoogleEvent ? (
+        <>
+          <div className="flex items-center gap-1.5 px-2.5 py-2">
+            {COLOR_PALETTE.map(c => (
+              <button
+                key={c.hex}
+                title={c.name}
+                onClick={() => { onColorChange(menu.blockId, c.hex); onClose(); }}
+                className="w-5 h-5 rounded-full border border-white/20 hover:scale-125 transition-transform"
+                style={{ backgroundColor: c.hex }}
+              />
+            ))}
+          </div>
+          <button
+            onClick={() => { onColorChange(menu.blockId, null); onClose(); }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-text-muted hover:bg-bg-tertiary transition-colors"
+          >
+            <RotateCcw size={14} />
+            Reset color
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            onClick={() => { onEdit(menu.blockId); onClose(); }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-text-primary hover:bg-bg-tertiary transition-colors"
+          >
+            <Pencil size={14} className="text-text-muted" />
+            Edit
+          </button>
+          <button
+            onClick={() => { onDelete(menu.blockId); onClose(); }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-red-400 hover:bg-bg-tertiary transition-colors"
+          >
+            <Trash2 size={14} />
+            Delete
+          </button>
+        </>
+      )}
     </div>
   );
 }

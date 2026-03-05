@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Lock, Repeat } from 'lucide-react';
+import { Check, Lock, Repeat } from 'lucide-react';
 import type { ScheduledSlotWithTask, FixedBlock } from '@/lib/types/domain';
 import {
   HOUR_HEIGHT, START_HOUR, END_HOUR, GRID_PAD_TOP,
@@ -171,6 +171,7 @@ export default function DayColumn({
       {slots.map(slot => {
         const isDragging = dragState?.slotId === slot.id;
         const isSibling = dragState?.isMerge && dragState.originalSlot.taskId === slot.taskId && dragState.slotId !== slot.id;
+        const isCompleted = slot.task?.completed;
 
         // During drag, always show original at its original position, dimmed
         const style = getBlockStyle(
@@ -190,7 +191,7 @@ export default function DayColumn({
             key={slot.id}
             className={`absolute rounded-lg border px-2 py-1 overflow-hidden text-[11px] leading-tight cursor-grab select-none ${colorClasses} ${
               isDragging ? 'opacity-20 border-dashed z-10' : 'z-10'
-            } ${isSibling ? 'opacity-30 border-dashed' : ''}`}
+            } ${isSibling ? 'opacity-30 border-dashed' : ''} ${isCompleted ? 'opacity-40' : ''}`}
             style={{
               top: style.top,
               height: style.height,
@@ -212,11 +213,15 @@ export default function DayColumn({
             }}
           >
             <div className="flex items-center gap-1.5">
-              <span
-                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotClass}`}
-                style={useTaskColor ? { backgroundColor: slot.task!.color! } : undefined}
-              />
-              <span className="font-medium truncate">{slot.task?.name || 'Task'}</span>
+              {isCompleted ? (
+                <Check size={10} className="flex-shrink-0" />
+              ) : (
+                <span
+                  className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotClass}`}
+                  style={useTaskColor ? { backgroundColor: slot.task!.color! } : undefined}
+                />
+              )}
+              <span className={`font-medium truncate ${isCompleted ? 'line-through' : ''}`}>{slot.task?.name || 'Task'}</span>
               {slot.locked && (
                 <Lock size={10} className="text-amber-500 flex-shrink-0" />
               )}

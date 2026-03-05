@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Search, Send, Trash2, Pencil, ArrowLeft, FolderOpen, Settings } from 'lucide-react';
+import { Plus, Search, Send, Trash2, Pencil, ArrowLeft, FolderOpen, Settings, PanelLeft } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
 import { useUser } from '@clerk/nextjs';
 import type { ChatMessage, ChatSession } from '@/lib/types/domain';
@@ -47,6 +47,7 @@ export default function ChatPanel({
 }: Props) {
   const { user } = useUser();
   const [input, setInput] = useState('');
+  const [showSessions, setShowSessions] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -101,6 +102,13 @@ export default function ChatPanel({
           )}
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setShowSessions(v => !v)}
+              className={`p-1.5 rounded-lg hover:bg-bg-hover transition-colors ${showSessions ? 'text-accent' : 'text-text-secondary'}`}
+              aria-label="Toggle sessions"
+            >
+              <PanelLeft className="w-4 h-4" />
+            </button>
+            <button
               onClick={onSettingsClick}
               className="p-1.5 rounded-lg hover:bg-bg-hover text-text-secondary transition-colors"
               aria-label="Settings"
@@ -120,8 +128,8 @@ export default function ChatPanel({
         </button>
       </div>
 
-      {/* Always-visible session list */}
-      {(() => {
+      {/* Collapsible session list */}
+      {showSessions && (() => {
         const query = searchQuery.toLowerCase();
         const allFiltered = sessions.filter(s => s.name.toLowerCase().includes(query));
         const generalSessions = allFiltered.filter(s => !s.taskId);

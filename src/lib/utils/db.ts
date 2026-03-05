@@ -80,6 +80,7 @@ export function mapChatSession(row: any): ChatSession {
     userId: row.user_id,
     name: row.name,
     taskId: row.task_id ?? null,
+    taskName: row.task_name ?? row.tasks?.name ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

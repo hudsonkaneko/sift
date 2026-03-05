@@ -242,6 +242,8 @@ export async function POST(req: Request) {
   for (let d = 0; d < 7; d++) occupiedPerDay.set(d, []);
 
   // Add fixed blocks (calendar events + user-created blocks)
+  // Google Calendar blocks get a 10-minute buffer on each side for travel/transition time
+  const GCAL_BUFFER_MINUTES = 10;
   for (const fb of fixedBlocks) {
     const day = fb.day_of_week;
     if (day == null || day < 0 || day > 6) {
@@ -249,10 +251,17 @@ export async function POST(req: Request) {
       continue;
     }
     const intervals = occupiedPerDay.get(day)!;
-    intervals.push({
-      start: fb.start_hour * 60 + fb.start_minute,
-      end: fb.end_hour * 60 + fb.end_minute,
-    });
+    const blockStart = fb.start_hour * 60 + fb.start_minute;
+    const blockEnd = fb.end_hour * 60 + fb.end_minute;
+    if (fb.google_event_id) {
+      // Pad Google Calendar events with buffer for travel time
+      intervals.push({
+        start: Math.max(0, blockStart - GCAL_BUFFER_MINUTES),
+        end: Math.min(24 * 60, blockEnd + GCAL_BUFFER_MINUTES),
+      });
+    } else {
+      intervals.push({ start: blockStart, end: blockEnd });
+    }
   }
 
   // Add locked slots

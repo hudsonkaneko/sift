@@ -93,6 +93,7 @@ export interface ChatSession {
   userId: string;
   name: string;
   taskId: string | null; // null = general chat, UUID = project-scoped chat
+  taskName: string | null;
   createdAt: string;
   updatedAt: string;
 }

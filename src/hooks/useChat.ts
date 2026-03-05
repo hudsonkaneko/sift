@@ -12,7 +12,7 @@ export function useChat() {
 
   const sessionsKey = projectScope
     ? `/api/chat/sessions?taskId=${projectScope.taskId}`
-    : '/api/chat/sessions?taskId=';
+    : '/api/chat/sessions';
 
   const { data: sessions, mutate: mutateSessions } = useSWR(sessionsKey, sessionsFetcher);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -127,6 +127,12 @@ export function useChat() {
     setActiveSessionId(data.id);
   }, [mutateSessions]);
 
+  const enterProjectScope = useCallback(async (taskId: string, taskName: string, sessionId: string) => {
+    setProjectScope({ taskId, taskName });
+    setActiveSessionId(sessionId);
+    await fetchMessages(sessionId);
+  }, [fetchMessages]);
+
   const exitProjectScope = useCallback(() => {
     setProjectScope(null);
     setActiveSessionId(null);
@@ -147,6 +153,7 @@ export function useChat() {
     clearMessages,
     fetchMessages,
     createProjectChat,
+    enterProjectScope,
     exitProjectScope,
   };
 }

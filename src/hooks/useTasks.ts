@@ -40,6 +40,15 @@ export function useTasks() {
   };
 
   const toggleComplete = async (id: string, completed: boolean) => {
+    // Optimistic update — reflect the change instantly
+    const optimistic = (tasks || []).map(t => {
+      if (t.id === id) return { ...t, completed };
+      // If completing a parent, also complete its children
+      if (completed && t.parentId === id) return { ...t, completed: true };
+      return t;
+    });
+    mutate(optimistic, false);
+
     await apiFetch(`/api/tasks/${id}/toggle`, {
       method: 'POST',
       body: JSON.stringify({ completed }),

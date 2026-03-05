@@ -16,6 +16,8 @@ interface Props {
   loading: boolean;
   projectScope: { taskId: string; taskName: string } | null;
   onExitProjectScope: () => void;
+  onEnterProjectScope: (taskId: string, taskName: string, sessionId: string) => void;
+  onSettingsClick: () => void;
 }
 
 export default function Sidebar({
@@ -31,6 +33,8 @@ export default function Sidebar({
   loading,
   projectScope,
   onExitProjectScope,
+  onEnterProjectScope,
+  onSettingsClick,
 }: Props) {
   return (
     <div className="w-[400px] min-w-[360px] flex flex-col bg-bg-primary border-r border-border">
@@ -47,6 +51,8 @@ export default function Sidebar({
         loading={loading}
         projectScope={projectScope}
         onExitProjectScope={onExitProjectScope}
+        onEnterProjectScope={onEnterProjectScope}
+        onSettingsClick={onSettingsClick}
       />
     </div>
   );

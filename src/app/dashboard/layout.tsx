@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
-import TopBar from '@/components/layout/TopBar';
 import TaskList from '@/components/tasks/TaskList';
 import CalendarView from '@/components/calendar/CalendarView';
 import CalendarSourcesSidebar from '@/components/calendar/CalendarSourcesSidebar';
@@ -53,6 +52,7 @@ export default function DashboardLayout({
     clearMessages,
     fetchMessages,
     createProjectChat,
+    enterProjectScope,
     exitProjectScope,
   } = useChat();
 
@@ -119,8 +119,6 @@ export default function DashboardLayout({
 
   return (
     <div className="flex flex-col h-screen bg-bg-primary">
-      <TopBar onSettingsClick={() => setShowSettings(!showSettings)} />
-
       <div className="flex flex-1 min-h-0">
         {/* Left sidebar: Chat */}
         <Sidebar
@@ -136,6 +134,8 @@ export default function DashboardLayout({
           loading={chatLoading}
           projectScope={projectScope}
           onExitProjectScope={exitProjectScope}
+          onEnterProjectScope={enterProjectScope}
+          onSettingsClick={() => setShowSettings(!showSettings)}
         />
 
         {/* Main content area */}

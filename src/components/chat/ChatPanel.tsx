@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Search, Send, Trash2, Pencil, ArrowLeft } from 'lucide-react';
+import { Plus, Search, Send, Trash2, Pencil, ArrowLeft, FolderOpen, Settings } from 'lucide-react';
+import { UserButton } from '@clerk/nextjs';
 import { useUser } from '@clerk/nextjs';
 import type { ChatMessage, ChatSession } from '@/lib/types/domain';
 import MultipleChoiceWidget from './MultipleChoiceWidget';
@@ -24,6 +25,8 @@ interface Props {
   loading: boolean;
   projectScope: { taskId: string; taskName: string } | null;
   onExitProjectScope: () => void;
+  onEnterProjectScope: (taskId: string, taskName: string, sessionId: string) => void;
+  onSettingsClick: () => void;
 }
 
 export default function ChatPanel({
@@ -39,6 +42,8 @@ export default function ChatPanel({
   loading,
   projectScope,
   onExitProjectScope,
+  onEnterProjectScope,
+  onSettingsClick,
 }: Props) {
   const { user } = useUser();
   const [input, setInput] = useState('');
@@ -97,7 +102,7 @@ export default function ChatPanel({
     <>
       {/* Sidebar header */}
       <div className="px-5 pt-5 pb-3">
-        <div className="mb-6">
+        <div className="mb-6 flex items-center justify-between">
           {projectScope ? (
             <button
               onClick={onExitProjectScope}
@@ -107,8 +112,23 @@ export default function ChatPanel({
               <span className="text-base font-semibold truncate max-w-[280px]">{projectScope.taskName}</span>
             </button>
           ) : (
-            <span className="text-xl font-bold text-accent">Sift</span>
+            <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M17 4H7L4 8l8 12 8-12-3-4z" fill="white" opacity="0.3" />
+                <path d="M12 20L4 8l3-4h10l3 4-8 12z" stroke="white" strokeWidth="2" strokeLinejoin="round" />
+              </svg>
+            </div>
           )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onSettingsClick}
+              className="p-1.5 rounded-lg hover:bg-bg-hover text-text-secondary transition-colors"
+              aria-label="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            <UserButton afterSignOutUrl="/" />
+          </div>
         </div>
 
         <div className="space-y-0.5">
@@ -130,65 +150,98 @@ export default function ChatPanel({
       </div>
 
       {/* Session dropdown */}
-      {showSessions && (
-        <div ref={sessionListRef} className="px-4 pb-2">
-          <div className="bg-bg-secondary border border-border rounded-xl p-2 max-h-[200px] overflow-y-auto space-y-0.5 shadow-sm">
-            {sessions.map(session => (
-              <div
-                key={session.id}
-                className={`group flex items-center px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors ${
-                  session.id === activeSessionId
-                    ? 'bg-accent-light text-accent font-medium'
-                    : 'text-text-secondary hover:bg-bg-tertiary'
-                }`}
-                onClick={() => {
-                  if (editingSessionId !== session.id) {
-                    onSwitchSession(session.id);
-                    setShowSessions(false);
-                  }
+      {showSessions && (() => {
+        const generalSessions = sessions.filter(s => !s.taskId);
+        const projectGroups = new Map<string, { taskName: string; sessions: ChatSession[] }>();
+        for (const s of sessions) {
+          if (s.taskId) {
+            const existing = projectGroups.get(s.taskId);
+            if (existing) {
+              existing.sessions.push(s);
+            } else {
+              projectGroups.set(s.taskId, { taskName: s.taskName || 'Untitled Project', sessions: [s] });
+            }
+          }
+        }
+
+        const renderSession = (session: ChatSession, isProject: boolean) => (
+          <div
+            key={session.id}
+            className={`group flex items-center ${isProject ? 'pl-7 pr-3' : 'px-3'} py-2 rounded-lg text-sm cursor-pointer transition-colors ${
+              session.id === activeSessionId
+                ? 'bg-accent-light text-accent font-medium'
+                : 'text-text-secondary hover:bg-bg-tertiary'
+            }`}
+            onClick={() => {
+              if (editingSessionId !== session.id) {
+                if (isProject && session.taskId && session.taskName) {
+                  onEnterProjectScope(session.taskId, session.taskName, session.id);
+                } else {
+                  onSwitchSession(session.id);
+                }
+                setShowSessions(false);
+              }
+            }}
+          >
+            {editingSessionId === session.id ? (
+              <input
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onBlur={() => { if (editName.trim()) onRenameSession(session.id, editName.trim()); setEditingSessionId(null); }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { if (editName.trim()) onRenameSession(session.id, editName.trim()); setEditingSessionId(null); }
+                  if (e.key === 'Escape') setEditingSessionId(null);
                 }}
-              >
-                {editingSessionId === session.id ? (
-                  <input
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    onBlur={() => { if (editName.trim()) onRenameSession(session.id, editName.trim()); setEditingSessionId(null); }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { if (editName.trim()) onRenameSession(session.id, editName.trim()); setEditingSessionId(null); }
-                      if (e.key === 'Escape') setEditingSessionId(null);
-                    }}
-                    className="bg-bg-primary border border-border rounded-lg px-2 py-1 text-sm text-text-primary outline-none focus:border-accent w-full"
-                    autoFocus
-                    onClick={e => e.stopPropagation()}
-                  />
-                ) : (
-                  <>
-                    <span className="truncate flex-1">{session.name}</span>
-                    <div className="hidden group-hover:flex items-center gap-1 flex-shrink-0">
-                      <button
-                        className="p-1 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
-                        onClick={e => { e.stopPropagation(); setEditingSessionId(session.id); setEditName(session.name); }}
-                        title="Rename"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                      {sessions.length > 1 && (
-                        <button
-                          className="p-1 rounded-md hover:bg-bg-hover text-text-muted hover:text-red-400 transition-colors"
-                          onClick={e => { e.stopPropagation(); onDeleteSession(session.id); }}
-                          title="Delete"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
+                className="bg-bg-primary border border-border rounded-lg px-2 py-1 text-sm text-text-primary outline-none focus:border-accent w-full"
+                autoFocus
+                onClick={e => e.stopPropagation()}
+              />
+            ) : (
+              <>
+                <span className="truncate flex-1">{session.name}</span>
+                <div className="hidden group-hover:flex items-center gap-1 flex-shrink-0">
+                  <button
+                    className="p-1 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
+                    onClick={e => { e.stopPropagation(); setEditingSessionId(session.id); setEditName(session.name); }}
+                    title="Rename"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                  {sessions.length > 1 && (
+                    <button
+                      className="p-1 rounded-md hover:bg-bg-hover text-text-muted hover:text-red-400 transition-colors"
+                      onClick={e => { e.stopPropagation(); onDeleteSession(session.id); }}
+                      title="Delete"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
-        </div>
-      )}
+        );
+
+        return (
+          <div ref={sessionListRef} className="px-4 pb-2">
+            <div className="bg-bg-secondary border border-border rounded-xl p-2 max-h-[200px] overflow-y-auto space-y-0.5 shadow-sm">
+              {generalSessions.map(s => renderSession(s, false))}
+              {projectGroups.size > 0 && generalSessions.length > 0 && (
+                <div className="border-t border-border my-1.5" />
+              )}
+              {Array.from(projectGroups.entries()).map(([taskId, group]) => (
+                <div key={taskId}>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-muted select-none">
+                    <FolderOpen size={12} />
+                    <span className="truncate">{group.taskName}</span>
+                  </div>
+                  {group.sessions.map(s => renderSession(s, true))}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Current session label */}
       <div className="px-5 py-2 flex items-center justify-between border-b border-border-light">

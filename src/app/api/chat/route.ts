@@ -6,6 +6,7 @@ import type { ProjectContext } from '@/lib/ai/claude';
 import { preprocessBraindump, buildEnhancedMessage } from '@/lib/ai/preprocessor';
 import { mapTask, mapPreferences, normalizeColorPalette } from '@/lib/utils/db';
 import { randomColor } from '@/lib/utils/format';
+import { shouldDecompose, decomposeTask } from '@/lib/planning/task-decomposer';
 import type { ChatMessage, UserTone } from '@/lib/types/domain';
 
 // POST /api/chat — send a message and get AI response
@@ -200,6 +201,54 @@ export async function POST(req: Request) {
         }
       }
     }
+    // 1b. Auto-decompose large tasks that Claude didn't split
+    for (const taskData of result.newTasks) {
+      if (taskData.subtasks && taskData.subtasks.length > 0) continue; // already split
+      if (!shouldDecompose({ name: taskData.name, estimatedMinutes: taskData.estimatedMinutes, deadline: taskData.deadline })) continue;
+
+      // Find the parent row we just inserted
+      const { data: parentRows } = await supabase
+        .from('tasks')
+        .select('id, color')
+        .eq('user_id', userId)
+        .eq('name', taskData.name)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const parentRow = parentRows?.[0];
+      if (!parentRow) continue;
+
+      console.log('[CHAT] Auto-decomposing task:', taskData.name);
+      const decomposition = await decomposeTask({
+        name: taskData.name,
+        deadline: taskData.deadline,
+        estimatedMinutes: taskData.estimatedMinutes,
+        category: taskData.category,
+      });
+
+      if (decomposition.shouldDecompose && decomposition.subtasks.length > 0) {
+        // Update parent to be a shell (0 minutes)
+        await supabase.from('tasks').update({ estimated_minutes: 0 }).eq('id', parentRow.id);
+
+        for (const sub of decomposition.subtasks) {
+          const { error: subErr } = await supabase.from('tasks').insert({
+            user_id: userId,
+            name: sub.name,
+            category: taskData.category,
+            estimated_minutes: sub.estimatedMinutes,
+            deadline: taskData.deadline,
+            recurrence: taskData.recurrence,
+            completed: false,
+            color: parentRow.color,
+            parent_id: parentRow.id,
+            urgency: taskData.urgency ?? 0,
+          });
+          if (!subErr) subtasksAdded++;
+        }
+        console.log('[CHAT] Auto-decomposed into', decomposition.subtasks.length, 'subtasks');
+      }
+    }
+
     if (tasksAdded > 0) {
       const subtaskNote = subtasksAdded > 0 ? ` with ${subtasksAdded} subtask(s)` : '';
       actions.push(`Added ${tasksAdded} task(s)${subtaskNote}`);

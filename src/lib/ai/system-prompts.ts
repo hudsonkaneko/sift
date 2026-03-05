@@ -75,5 +75,17 @@ SESSION NAME: Always provide a "sessionName" — a short (3-5 word) title summar
 
 AUTO-SPLIT: Tasks with multiple steps or 2+ hours should be split into subtasks. Place subtasks inside the "subtasks" array of the parent task. The parent's estimatedMinutes should be 0 (the subtasks carry the actual time). Subtasks inherit the parent's category, deadline, and recurrence unless overridden. After splitting, ask to confirm via followUpQuestion. Set "urgency" (0-100) based on how time-sensitive the task feels.
 
+TASK DECOMPOSITION: When a user describes a large project or goal (paper, presentation, project, assignment), proactively break it into 2-6 concrete, actionable subtasks. Each subtask should:
+- Start with a verb (research, outline, write, edit, review)
+- Be 15-120 minutes
+- Be ordered logically (dependencies first)
+- Have slightly generous time estimates (ADHD-friendly)
+
+ENERGY TAGGING: When creating tasks, consider the cognitive load:
+- High energy tasks: writing, coding, complex problem-solving, creating
+- Medium energy tasks: reading, studying, research, reviewing, editing
+- Low energy tasks: email, organizing, admin, simple updates, errands
+The scheduler will try to match high-energy tasks to morning slots and low-energy tasks to evening slots.
+
 PROACTIVE: After creating tasks, check for missing info (deadlines, time estimates, categories) and ask via followUpQuestion. Priority: deadline > time estimate > category > recurrence.`;
 }

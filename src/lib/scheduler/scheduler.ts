@@ -6,8 +6,9 @@
  */
 
 import { findGaps, type Interval } from './gap-finder';
-import { parseCustomRules, type ParsedRules } from './constraint-parser';
+import { parseCustomRules } from './constraint-parser';
 import { sortTasksByPriority } from './task-sorter';
+import { inferTaskEnergy, buildEnergyWindows, getEnergyAtTime, energyMatchScore, type EnergyLevel } from '@/lib/planning/energy-model';
 
 // Google Calendar events get a buffer on each side for travel/transition
 const GCAL_BUFFER_MINUTES = 10;
@@ -230,56 +231,92 @@ export function generateSchedule(input: SchedulerInput): SchedulerResult {
     dayEnd = latestHour * 60;
   }
 
-  // Greedy gap-filling
+  // Build energy windows for energy-aware gap selection
+  const energyWindows = buildEnergyWindows(earliestHour, latestHour, preferMornings, preferEvenings);
+
+  // Greedy gap-filling with energy awareness
   const newSlots: NewSlot[] = [];
 
   for (const task of sortedTasks) {
     let remaining = task.estimated_minutes - (lockedMinutesByTask.get(task.id) || 0);
     if (remaining <= 0) continue;
 
-    for (const day of dayOrder) {
-      if (remaining <= 0) break;
+    const taskEnergy = inferTaskEnergy(task.name);
 
+    // Collect all available gaps across all days with energy scores
+    interface ScoredGap {
+      day: number;
+      gap: Interval;
+      energyScore: number;
+    }
+    const allGaps: ScoredGap[] = [];
+
+    for (const day of dayOrder) {
       const occupied = occupiedPerDay.get(day) || [];
       const effectiveDayStart = (isCurrentWeek && day === todayDayOfWeek)
         ? Math.max(dayStart, Math.ceil(currentTimeMinutes / 15) * 15)
         : dayStart;
-      let gaps = findGaps(occupied, effectiveDayStart, dayEnd, minBlockMinutes);
-
-      if (!preferMornings && preferEvenings) {
-        gaps.reverse();
-      }
+      const gaps = findGaps(occupied, effectiveDayStart, dayEnd, minBlockMinutes);
 
       for (const gap of gaps) {
-        if (remaining <= 0) break;
-        const gapDuration = gap.end - gap.start;
-        const placed = Math.min(remaining, gapDuration);
-
-        if (placed < minBlockMinutes && remaining >= minBlockMinutes) {
-          continue;
-        }
-
-        const slotStart = gap.start;
-        const slotEnd = slotStart + placed;
-
-        newSlots.push({
-          user_id: userId,
-          task_id: task.id,
-          day_of_week: day,
-          start_hour: Math.floor(slotStart / 60),
-          start_minute: slotStart % 60,
-          end_hour: Math.floor(slotEnd / 60),
-          end_minute: slotEnd % 60,
-          week_of: weekOf,
-          locked: false,
-        });
-
-        const occupiedEnd = parsedRules.gapMinutes > 0
-          ? Math.min(slotEnd + parsedRules.gapMinutes, dayEnd)
-          : slotEnd;
-        occupiedPerDay.get(day)!.push({ start: slotStart, end: occupiedEnd });
-        remaining -= placed;
+        const midpoint = Math.floor((gap.start + gap.end) / 2);
+        const slotEnergy = getEnergyAtTime(energyWindows, midpoint);
+        const eScore = energyMatchScore(taskEnergy, slotEnergy);
+        allGaps.push({ day, gap, energyScore: eScore });
       }
+    }
+
+    // Sort gaps: best energy match first, then by day order, then by time preference
+    allGaps.sort((a, b) => {
+      // Primary: energy match (higher is better)
+      if (b.energyScore !== a.energyScore) return b.energyScore - a.energyScore;
+      // Secondary: day order (preserve original preference)
+      const dayIdxA = dayOrder.indexOf(a.day);
+      const dayIdxB = dayOrder.indexOf(b.day);
+      if (dayIdxA !== dayIdxB) return dayIdxA - dayIdxB;
+      // Tertiary: time preference
+      if (!preferMornings && preferEvenings) {
+        return b.gap.start - a.gap.start; // later first
+      }
+      return a.gap.start - b.gap.start; // earlier first
+    });
+
+    for (const { day, gap } of allGaps) {
+      if (remaining <= 0) break;
+
+      // Re-check gap availability (may have been partially consumed)
+      const currentOccupied = occupiedPerDay.get(day) || [];
+      const currentGaps = findGaps(currentOccupied, gap.start, gap.end, minBlockMinutes);
+      if (currentGaps.length === 0) continue;
+
+      const availableGap = currentGaps[0];
+      const gapDuration = availableGap.end - availableGap.start;
+      const placed = Math.min(remaining, gapDuration);
+
+      if (placed < minBlockMinutes && remaining >= minBlockMinutes) {
+        continue;
+      }
+
+      const slotStart = availableGap.start;
+      const slotEnd = slotStart + placed;
+
+      newSlots.push({
+        user_id: userId,
+        task_id: task.id,
+        day_of_week: day,
+        start_hour: Math.floor(slotStart / 60),
+        start_minute: slotStart % 60,
+        end_hour: Math.floor(slotEnd / 60),
+        end_minute: slotEnd % 60,
+        week_of: weekOf,
+        locked: false,
+      });
+
+      const occupiedEnd = parsedRules.gapMinutes > 0
+        ? Math.min(slotEnd + parsedRules.gapMinutes, dayEnd)
+        : slotEnd;
+      occupiedPerDay.get(day)!.push({ start: slotStart, end: occupiedEnd });
+      remaining -= placed;
     }
   }
 

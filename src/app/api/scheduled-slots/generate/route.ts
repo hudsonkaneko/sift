@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/utils/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { generateSchedule } from '@/lib/scheduler/scheduler';
+import { analyzeScheduleRisk } from '@/lib/planning/risk-analysis';
 
 /**
  * POST /api/scheduled-slots/generate
@@ -48,6 +49,22 @@ export async function POST(req: Request) {
 
   console.log(`[SCHEDULER] fixedBlocks: ${fixedBlocks.length} (of ${allBlocks.length} total, ${excludedCalendarIds.size} excluded calendars)`);
 
+  // Run risk analysis before scheduling
+  const riskAnalysis = analyzeScheduleRisk({
+    tasks,
+    fixedBlocks,
+    lockedSlots,
+    preferences: {
+      earliestHour: prefs?.earliest_hour ?? 9,
+      latestHour: prefs?.latest_hour ?? 23,
+      minBlockMinutes: prefs?.min_block_minutes ?? 30,
+      avoidWeekends: prefs?.avoid_weekends ?? false,
+      customRules: prefs?.custom_rules ?? [],
+    },
+    weekOf,
+    timezone: timezone || 'UTC',
+  });
+
   // Delete unlocked slots (they'll be regenerated)
   if (unlockedSlotIds.length > 0) {
     await supabase.from('scheduled_slots').delete().in('id', unlockedSlotIds).eq('user_id', userId);
@@ -84,6 +101,14 @@ export async function POST(req: Request) {
     slotsCreated: result.slots.length,
     tasksScheduled: new Set(result.slots.map(s => s.task_id)).size,
     unlockedRemoved: unlockedSlotIds.length,
+    riskAnalysis: {
+      riskLevel: riskAnalysis.riskLevel,
+      riskRatio: riskAnalysis.riskRatio,
+      requiredMinutes: riskAnalysis.requiredMinutes,
+      availableMinutes: riskAnalysis.availableMinutes,
+      summary: riskAnalysis.summary,
+      riskyTasks: riskAnalysis.riskyTasks,
+    },
     debug: {
       fixedBlocksTotal: allBlocks.length,
       fixedBlocksUsed: fixedBlocks.length,

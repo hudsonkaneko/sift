@@ -192,7 +192,11 @@ export default function DashboardLayout({
       {showSettings && preferences && (
         <SettingsPanel
           preferences={preferences}
-          onUpdate={updatePreferences}
+          onUpdate={async (updates) => {
+            const result = await updatePreferences(updates);
+            mutateTasks(); // Refresh tasks in case colors changed
+            return result;
+          }}
           onClose={() => setShowSettings(false)}
           gcal={{
             accounts: gcal.accounts,

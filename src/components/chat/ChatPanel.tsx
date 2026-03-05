@@ -61,8 +61,8 @@ export default function ChatPanel({
         setEditingSessionId(null);
       }
     };
-    const timer = setTimeout(() => window.addEventListener('mousedown', handleClickOutside), 0);
-    return () => { clearTimeout(timer); window.removeEventListener('mousedown', handleClickOutside); };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
   }, [showSessions]);
 
   const handleSubmit = async () => {

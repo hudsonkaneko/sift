@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/utils/auth';
 import { createServiceClient } from '@/lib/supabase/server';
+import { normalizeColorPalette } from '@/lib/utils/db';
+import { getActiveColors } from '@/lib/utils/format';
 import type { ColorPaletteConfig } from '@/lib/types/domain';
 
 // GET /api/preferences — get scheduling preferences (creates default if missing)
@@ -92,6 +94,28 @@ export async function PATCH(req: Request) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Recolor existing tasks when palette changes
+  if (updates.color_palette !== undefined) {
+    const newPalette = normalizeColorPalette(updates.color_palette);
+    const activeColors = getActiveColors(newPalette);
+
+    const { data: topLevelTasks } = await supabase
+      .from('tasks')
+      .select('id, color')
+      .eq('user_id', userId)
+      .is('parent_id', null);
+
+    if (topLevelTasks) {
+      for (const task of topLevelTasks) {
+        if (!task.color || !activeColors.includes(task.color)) {
+          const newColor = activeColors[Math.floor(Math.random() * activeColors.length)];
+          await supabase.from('tasks').update({ color: newColor }).eq('id', task.id);
+          await supabase.from('tasks').update({ color: newColor }).eq('parent_id', task.id);
+        }
+      }
+    }
   }
 
   return NextResponse.json(data);

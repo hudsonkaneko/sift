@@ -109,10 +109,11 @@ export default function TaskList({
         setContextMenu(null);
       }
     };
-    const timer = setTimeout(() => window.addEventListener('mousedown', handleClickOutside), 0);
+    window.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('contextmenu', handleClickOutside);
     return () => {
-      clearTimeout(timer);
       window.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('contextmenu', handleClickOutside);
     };
   }, [contextMenu]);
 

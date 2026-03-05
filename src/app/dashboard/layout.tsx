@@ -21,7 +21,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [showSettings, setShowSettings] = useState(false);
-  const { tasks, toggleComplete, updateTask, deleteTask, addSubtask, deleteAllTasks } = useTasks();
+  const { tasks, toggleComplete, updateTask, deleteTask, addSubtask, deleteAllTasks, mutate: mutateTasks } = useTasks();
   const { preferences, updatePreferences } = usePreferences();
   const {
     weekOf,
@@ -110,6 +110,7 @@ export default function DashboardLayout({
   // Refresh slots after chat sends (AI may have created tasks/blocks)
   const handleChatSend = async (text: string) => {
     await sendMessage(text);
+    mutateTasks();
     mutateSlots();
   };
 

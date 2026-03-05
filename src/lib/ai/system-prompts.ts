@@ -73,7 +73,14 @@ RULES:
 
 SESSION NAME: Always provide a "sessionName" — a short (3-5 word) title summarizing the conversation topic. Examples: "Weekly Study Plan", "Startup Launch Tasks", "Scheduling Preferences". Update it if the topic shifts significantly.
 
-AUTO-SPLIT: Tasks with multiple steps or 2+ hours should be split into subtasks. Place subtasks inside the "subtasks" array of the parent task. The parent's estimatedMinutes should be 0 (the subtasks carry the actual time). Subtasks inherit the parent's category, deadline, and recurrence unless overridden. After splitting, ask to confirm via followUpQuestion. Set "urgency" (0-100) based on how time-sensitive the task feels.
+AUTO-SPLIT: Tasks with multiple steps or 2+ hours should be split into subtasks. Place subtasks inside the "subtasks" array of the parent task. The parent's estimatedMinutes should be 0 (the subtasks carry the actual time). Subtasks inherit the parent's category, deadline, and recurrence unless overridden. After splitting, ask to confirm via followUpQuestion.
+
+URGENCY (0-100) — This determines scheduling order WITHIN the same deadline tier. Deadline proximity is always the primary factor, so urgency only matters when comparing tasks with similar deadlines:
+- 80-100: Blocking or high-stakes (client demo, group dependency, exam prep)
+- 50-79: Important, user stressed urgency (midterm study, pitch deck)
+- 20-49: Normal importance (homework, regular work)
+- 0-19: Low stakes, flexible timing (organize notes, optional reading)
+Default to 30 unless the user signals urgency. Never set above 70 unless the user explicitly says it's critical/urgent/blocking.
 
 PROACTIVE: After creating tasks, check for missing info (deadlines, time estimates, categories) and ask via followUpQuestion. Priority: deadline > time estimate > category > recurrence.`;
 }

@@ -220,19 +220,33 @@ export async function POST(req: Request) {
   const todayMidnight = new Date(localYear, localMonth - 1, localDay);
   const currentTimeMinutes = localHour * 60 + localMinute;
 
+  // Tiered priority: deadline proximity dominates (tiers 200+ apart),
+  // urgency (0-100) only differentiates within the same deadline tier.
   function taskPriority(t: { deadline: string | null; urgency: number; estimated_minutes: number }): number {
     let score = t.urgency ?? 0;
     if (t.deadline) {
       const deadlineDate = new Date(t.deadline + 'T00:00:00');
       const diffDays = Math.floor((deadlineDate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
-      if (diffDays < 0) score += 100;
-      else if (diffDays === 0) score += 80;
-      else if (diffDays === 1) score += 50;
-      else if (diffDays <= 7) score += 30;
-      else if (diffDays <= 14) score += 10;
+      if (diffDays < 0) score += 1000;           // overdue
+      else if (diffDays === 0) score += 900;      // due today
+      else if (diffDays <= 2) score += 700 + (2 - diffDays) * 50;  // 1d=750, 2d=700
+      else if (diffDays <= 7) score += 400 + (7 - diffDays) * 40;  // 3d=560 … 7d=400
+      else if (diffDays <= 14) score += 200 + (14 - diffDays) * 20; // 8d=320 … 14d=200
+      else score += 110;                          // 15+ days
     }
-    if (t.estimated_minutes > 0 && t.estimated_minutes <= 30) score += 5;
     return score;
+  }
+
+  // For deadline-aware day placement: compute the day-of-week the deadline falls on
+  // within this week (or null if deadline is outside this week or absent)
+  function deadlineDayInWeek(t: { deadline: string | null }): number | null {
+    if (!t.deadline) return null;
+    const deadlineDate = new Date(t.deadline + 'T00:00:00');
+    const weekStart = new Date(weekOf + 'T00:00:00');
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    if (deadlineDate < weekStart || deadlineDate > weekEnd) return null;
+    return deadlineDate.getDay();
   }
 
   schedulableTasks.sort((a, b) => taskPriority(b) - taskPriority(a));
@@ -349,7 +363,25 @@ export async function POST(req: Request) {
     let remaining = task.estimated_minutes - (lockedMinutesByTask.get(task.id) || 0);
     if (remaining <= 0) continue;
 
-    for (const day of dayOrder) {
+    // Deadline-aware day ordering: prefer days on/before the deadline
+    const dlDay = deadlineDayInWeek(task);
+    let taskDayOrder = dayOrder;
+    if (dlDay !== null) {
+      // Put days up to the deadline first (sorted ascending), then days after
+      const beforeOrOn = dayOrder.filter(d => {
+        const dAdj = d === 0 ? 7 : d;
+        const dlAdj = dlDay === 0 ? 7 : dlDay;
+        return dAdj <= dlAdj;
+      });
+      const after = dayOrder.filter(d => {
+        const dAdj = d === 0 ? 7 : d;
+        const dlAdj = dlDay === 0 ? 7 : dlDay;
+        return dAdj > dlAdj;
+      });
+      taskDayOrder = [...beforeOrOn, ...after];
+    }
+
+    for (const day of taskDayOrder) {
       if (remaining <= 0) break;
 
       const occupied = occupiedPerDay.get(day) || [];

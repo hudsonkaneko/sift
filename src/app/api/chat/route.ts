@@ -18,6 +18,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing message or sessionId' }, { status: 400 });
   }
 
+  console.log('[CHAT] Incoming message:', message.slice(0, 200), sessionId);
+
   const supabase = createServiceClient();
 
   // Check if this is a project-scoped session
@@ -141,12 +143,16 @@ export async function POST(req: Request) {
     // Preprocess
     const preprocessed = preprocessBraindump(message);
     const enhancedMessage = buildEnhancedMessage(message, preprocessed);
+    if (preprocessed.wasModified) {
+      console.log('[CHAT] Preprocessed:', { cleaned: preprocessed.cleaned.slice(0, 200), dates: preprocessed.dates.length });
+    }
 
     // Call AI
+    console.log('[CHAT] Calling Claude with', existingTasks.length, 'existing tasks, tone:', tone, projectContext ? 'project-scoped' : 'general');
     const result = await processChatMessage(enhancedMessage, existingTasks, currentPrefs, chatHistory, tone, projectContext);
 
     const actions: string[] = [];
-    console.log('[chat] AI result:', { newTasks: result.newTasks.length, taskUpdates: result.taskUpdates.length, newBlocks: result.newBlocks.length });
+    console.log('[CHAT] AI result:', { newTasks: result.newTasks.length, taskUpdates: result.taskUpdates.length, newBlocks: result.newBlocks.length, hasPrefs: !!result.preferenceUpdates });
 
     // 1. Add new tasks (with subtask support)
     let tasksAdded = 0;
@@ -167,7 +173,7 @@ export async function POST(req: Request) {
       }).select('id, color').single();
 
       if (parentErr) {
-        console.error('[chat] Task insert failed:', parentErr.message, taskData);
+        console.error('[CHAT] Task insert failed:', parentErr.message, taskData);
         continue;
       }
       tasksAdded++;
@@ -187,7 +193,7 @@ export async function POST(req: Request) {
             urgency: sub.urgency ?? 0,
           });
           if (subErr) {
-            console.error('[chat] Subtask insert failed:', subErr.message, sub);
+            console.error('[CHAT] Subtask insert failed:', subErr.message, sub);
             continue;
           }
           subtasksAdded++;
@@ -290,6 +296,7 @@ export async function POST(req: Request) {
       sessionName: result.sessionName,
     });
   } catch (error: unknown) {
+    console.error('[CHAT] Pipeline error:', error instanceof Error ? error.message : error);
     const errMsg = `Error: ${error instanceof Error ? error.message : 'Failed to process message'}`;
     await supabase.from('chat_messages').insert({
       session_id: sessionId,

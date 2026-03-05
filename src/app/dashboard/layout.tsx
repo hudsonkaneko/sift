@@ -15,6 +15,7 @@ import { useChat } from '@/hooks/useChat';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useCalendarSources } from '@/hooks/useCalendarSources';
 import { SNAP_MINUTES, snapMinutes } from '@/components/calendar/constants';
+import { DEFAULT_PREFERENCES } from '@/lib/types/domain';
 
 export default function DashboardLayout({
   children,
@@ -306,9 +307,9 @@ export default function DashboardLayout({
       </div>
 
       {/* Settings modal */}
-      {showSettings && preferences && (
+      {showSettings && (
         <SettingsPanel
-          preferences={preferences}
+          preferences={preferences || { ...DEFAULT_PREFERENCES, id: '', userId: '', createdAt: '', updatedAt: '' }}
           onUpdate={async (updates) => {
             const result = await updatePreferences(updates);
             mutateTasks(); // Refresh tasks in case colors changed

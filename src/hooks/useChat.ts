@@ -23,6 +23,9 @@ export function useChat() {
   const effectiveSessionId = activeSessionId || sessions?.[0]?.id || null;
 
   const fetchMessages = useCallback(async (sessionId: string) => {
+    // Skip fetching for temporary optimistic session IDs
+    if (sessionId.startsWith('temp-')) return;
+
     const rows = await apiFetch<Array<Record<string, unknown>>>(`/api/chat/sessions/${sessionId}/messages`);
     const mapped: ChatMessage[] = rows.map(r => ({
       id: r.id as string,

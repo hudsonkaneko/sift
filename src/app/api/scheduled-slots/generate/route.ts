@@ -7,6 +7,79 @@ interface Interval {
   end: number;
 }
 
+// Parsed constraints extracted from free-text custom rules
+interface ParsedRules {
+  gapMinutes: number; // buffer between scheduled slots (default 0)
+  blockedDays: Set<number>; // days to avoid entirely (0=Sun...6=Sat)
+  noScheduleBefore: number | null; // override earliest hour (minutes from midnight)
+  noScheduleAfter: number | null; // override latest hour (minutes from midnight)
+}
+
+const DAY_NAMES: Record<string, number> = {
+  sunday: 0, sun: 0, monday: 1, mon: 1, tuesday: 2, tue: 2, tues: 2,
+  wednesday: 3, wed: 3, thursday: 4, thu: 4, thurs: 4,
+  friday: 5, fri: 5, saturday: 6, sat: 6,
+};
+
+function parseCustomRules(rules: string[]): ParsedRules {
+  const parsed: ParsedRules = {
+    gapMinutes: 0,
+    blockedDays: new Set(),
+    noScheduleBefore: null,
+    noScheduleAfter: null,
+  };
+
+  for (const rule of rules) {
+    const lower = rule.toLowerCase();
+
+    // Gap/buffer: "10 minute gap", "15 min buffer", "leave 10 minutes between"
+    const gapMatch = lower.match(/(\d+)\s*(?:min(?:ute)?s?)\s*(?:gap|buffer|break|between|padding|space)/);
+    if (!gapMatch) {
+      // Also try: "leave X minutes between", "X min gaps"
+      const gapMatch2 = lower.match(/(?:leave|add|put|have)\s*(\d+)\s*(?:min(?:ute)?s?)/);
+      if (gapMatch2) {
+        parsed.gapMinutes = Math.max(parsed.gapMinutes, parseInt(gapMatch2[1]));
+      }
+    } else {
+      parsed.gapMinutes = Math.max(parsed.gapMinutes, parseInt(gapMatch[1]));
+    }
+
+    // Time restrictions: "no scheduling before 10am", "don't schedule after 8pm"
+    const beforeMatch = lower.match(/(?:no|don'?t|never|avoid)\s*schedul\w*\s*before\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (beforeMatch) {
+      let hour = parseInt(beforeMatch[1]);
+      const minute = beforeMatch[2] ? parseInt(beforeMatch[2]) : 0;
+      if (beforeMatch[3] === 'pm' && hour < 12) hour += 12;
+      if (beforeMatch[3] === 'am' && hour === 12) hour = 0;
+      const mins = hour * 60 + minute;
+      parsed.noScheduleBefore = parsed.noScheduleBefore ? Math.max(parsed.noScheduleBefore, mins) : mins;
+    }
+
+    const afterMatch = lower.match(/(?:no|don'?t|never|avoid)\s*schedul\w*\s*after\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (afterMatch) {
+      let hour = parseInt(afterMatch[1]);
+      const minute = afterMatch[2] ? parseInt(afterMatch[2]) : 0;
+      if (afterMatch[3] === 'pm' && hour < 12) hour += 12;
+      if (afterMatch[3] === 'am' && hour === 12) hour = 0;
+      const mins = hour * 60 + minute;
+      parsed.noScheduleAfter = parsed.noScheduleAfter ? Math.min(parsed.noScheduleAfter, mins) : mins;
+    }
+
+    // Day restrictions: "no scheduling on fridays", "don't schedule on sunday"
+    const dayMatch = lower.match(/(?:no|don'?t|never|avoid)\s*schedul\w*\s*(?:on\s*)?(\w+)/);
+    if (dayMatch) {
+      const dayName = dayMatch[1];
+      // Strip trailing 's' for plurals like "fridays"
+      const normalized = dayName.replace(/s$/, '');
+      if (DAY_NAMES[normalized] !== undefined) {
+        parsed.blockedDays.add(DAY_NAMES[normalized]);
+      }
+    }
+  }
+
+  return parsed;
+}
+
 function mergeIntervals(intervals: Interval[]): Interval[] {
   if (intervals.length === 0) return [];
   intervals.sort((a, b) => a.start - b.start);
@@ -99,6 +172,10 @@ export async function POST(req: Request) {
   const preferMornings = prefs?.prefer_mornings ?? true;
   const preferEvenings = prefs?.prefer_evenings ?? true;
   const avoidWeekends = prefs?.avoid_weekends ?? false;
+  const customRules = prefs?.custom_rules ?? [];
+
+  // Parse custom rules into structured constraints
+  const parsedRules = parseCustomRules(customRules);
 
   // Delete unlocked slots (they'll be regenerated)
   if (unlockedSlotIds.length > 0) {
@@ -192,6 +269,11 @@ export async function POST(req: Request) {
     dayOrder = [1, 2, 3, 4, 5, 6, 0]; // Weekdays first, then weekend
   }
 
+  // Remove days blocked by custom rules
+  if (parsedRules.blockedDays.size > 0) {
+    dayOrder = dayOrder.filter(d => !parsedRules.blockedDays.has(d));
+  }
+
   // Only schedule on today and future days if generating for the current week
   if (isCurrentWeek) {
     // dayOrder may have Sunday (0) at the end after weekdays (1-6),
@@ -204,8 +286,13 @@ export async function POST(req: Request) {
     });
   }
 
-  const dayStart = earliestHour * 60;
-  const dayEnd = latestHour * 60;
+  // Apply custom rule time overrides on top of preferences
+  const dayStart = parsedRules.noScheduleBefore
+    ? Math.max(earliestHour * 60, parsedRules.noScheduleBefore)
+    : earliestHour * 60;
+  const dayEnd = parsedRules.noScheduleAfter
+    ? Math.min(latestHour * 60, parsedRules.noScheduleAfter)
+    : latestHour * 60;
 
   // Greedily place tasks into gaps
   const newSlots: {
@@ -262,8 +349,11 @@ export async function POST(req: Request) {
           locked: false,
         });
 
-        // Mark this interval as occupied
-        occupiedPerDay.get(day)!.push({ start: slotStart, end: slotEnd });
+        // Mark this interval as occupied (with gap buffer for spacing between tasks)
+        const occupiedEnd = parsedRules.gapMinutes > 0
+          ? Math.min(slotEnd + parsedRules.gapMinutes, dayEnd)
+          : slotEnd;
+        occupiedPerDay.get(day)!.push({ start: slotStart, end: occupiedEnd });
         remaining -= placed;
       }
     }

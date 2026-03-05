@@ -108,14 +108,12 @@ export default function DayColumn({
       {blocks.map(block => {
         const isUserEvent = block.userCreated;
         const isDragging = blockDrag?.blockId === block.id;
-        // When dragging to a different column, hide the original
-        const isDraggedAway = isDragging && blockDrag!.previewDayOfWeek !== dayIndex;
 
         const style = getBlockStyle(
-          isDragging && !isDraggedAway ? blockDrag!.previewStartHour : block.startHour,
-          isDragging && !isDraggedAway ? blockDrag!.previewStartMinute : block.startMinute,
-          isDragging && !isDraggedAway ? blockDrag!.previewEndHour : block.endHour,
-          isDragging && !isDraggedAway ? blockDrag!.previewEndMinute : block.endMinute,
+          block.startHour,
+          block.startMinute,
+          block.endHour,
+          block.endMinute,
         );
 
         const useInlineColor = !!block.color;
@@ -129,7 +127,7 @@ export default function DayColumn({
                 : isUserEvent
                   ? 'bg-accent/10 border-accent/25 text-accent cursor-grab'
                   : 'bg-bg-tertiary border-border-light text-text-muted'
-            } ${isDragging ? 'opacity-50 ring-2 ring-accent' : ''} ${isDraggedAway ? 'opacity-20 border-dashed' : ''}`}
+            } ${isDragging ? 'opacity-20 border-dashed' : ''}`}
             style={{
               top: style.top,
               height: style.height,

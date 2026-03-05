@@ -331,7 +331,9 @@ export async function POST(req: Request) {
   console.log(`[gcal/sync] total blocks to insert: ${blocks.length} (deduped from ${blocksMap.size} unique keys)`);
 
   if (blocks.length > 0) {
-    const { error } = await supabase.from('fixed_blocks').insert(blocks);
+    const { error } = await supabase.from('fixed_blocks').upsert(blocks, {
+      onConflict: 'user_id,google_event_id,google_calendar_id',
+    });
     if (error) {
       console.error('[gcal/sync] ERROR inserting blocks:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });

@@ -32,21 +32,22 @@ function parseCustomRules(rules: string[]): ParsedRules {
   for (const rule of rules) {
     const lower = rule.toLowerCase();
 
-    // Gap/buffer: "10 minute gap", "15 min buffer", "leave 10 minutes between"
-    const gapMatch = lower.match(/(\d+)\s*(?:min(?:ute)?s?)\s*(?:gap|buffer|break|between|padding|space)/);
-    if (!gapMatch) {
-      // Also try: "leave X minutes between", "X min gaps"
-      const gapMatch2 = lower.match(/(?:leave|add|put|have)\s*(\d+)\s*(?:min(?:ute)?s?)/);
-      if (gapMatch2) {
-        parsed.gapMinutes = Math.max(parsed.gapMinutes, parseInt(gapMatch2[1]));
+    // Gap/buffer: very permissive — if the rule mentions gap/buffer/break/between/space
+    // AND contains a number followed by "min", extract the number.
+    // Catches: "10 minute gaps", "10-minute buffer", "leave a 10 min gap",
+    // "gaps of 10 minutes", "Keep 10 minutes between tasks", etc.
+    const gapKeywords = /gap|buffer|break|between|padding|space|spacing/;
+    if (gapKeywords.test(lower)) {
+      const numMatch = lower.match(/(\d+)[\s-]*min/);
+      if (numMatch) {
+        parsed.gapMinutes = Math.max(parsed.gapMinutes, parseInt(numMatch[1]));
       }
-    } else {
-      parsed.gapMinutes = Math.max(parsed.gapMinutes, parseInt(gapMatch[1]));
     }
 
-    // Time restrictions: "no scheduling before 10am", "don't schedule after 8pm"
-    const beforeMatch = lower.match(/(?:no|don'?t|never|avoid)\s*schedul\w*\s*before\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
-    if (beforeMatch) {
+    // Time restrictions: "no scheduling before 10am", "don't schedule after 8pm",
+    // "start no earlier than 9am", "nothing before 10"
+    const beforeMatch = lower.match(/before\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (beforeMatch && /(?:no|don'?t|never|avoid|nothing|earliest|start)/.test(lower)) {
       let hour = parseInt(beforeMatch[1]);
       const minute = beforeMatch[2] ? parseInt(beforeMatch[2]) : 0;
       if (beforeMatch[3] === 'pm' && hour < 12) hour += 12;
@@ -55,8 +56,8 @@ function parseCustomRules(rules: string[]): ParsedRules {
       parsed.noScheduleBefore = parsed.noScheduleBefore ? Math.max(parsed.noScheduleBefore, mins) : mins;
     }
 
-    const afterMatch = lower.match(/(?:no|don'?t|never|avoid)\s*schedul\w*\s*after\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
-    if (afterMatch) {
+    const afterMatch = lower.match(/after\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (afterMatch && /(?:no|don'?t|never|avoid|nothing|latest|stop|end)/.test(lower)) {
       let hour = parseInt(afterMatch[1]);
       const minute = afterMatch[2] ? parseInt(afterMatch[2]) : 0;
       if (afterMatch[3] === 'pm' && hour < 12) hour += 12;
@@ -65,14 +66,10 @@ function parseCustomRules(rules: string[]): ParsedRules {
       parsed.noScheduleAfter = parsed.noScheduleAfter ? Math.min(parsed.noScheduleAfter, mins) : mins;
     }
 
-    // Day restrictions: "no scheduling on fridays", "don't schedule on sunday"
-    const dayMatch = lower.match(/(?:no|don'?t|never|avoid)\s*schedul\w*\s*(?:on\s*)?(\w+)/);
-    if (dayMatch) {
-      const dayName = dayMatch[1];
-      // Strip trailing 's' for plurals like "fridays"
-      const normalized = dayName.replace(/s$/, '');
-      if (DAY_NAMES[normalized] !== undefined) {
-        parsed.blockedDays.add(DAY_NAMES[normalized]);
+    // Day restrictions: any rule mentioning a day name with a negative keyword
+    for (const [name, dayNum] of Object.entries(DAY_NAMES)) {
+      if (lower.includes(name) && /(?:no|don'?t|never|avoid|skip|off)/.test(lower)) {
+        parsed.blockedDays.add(dayNum);
       }
     }
   }

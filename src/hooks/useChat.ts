@@ -89,13 +89,17 @@ export function useChat() {
     setLoading(true);
 
     try {
-      const result = await apiFetch<{ message: string; followUpQuestion?: { question: string; options: string[] } }>('/api/chat', {
+      const result = await apiFetch<{ message: string; sessionName?: string; followUpQuestion?: { question: string; options: string[] } }>('/api/chat', {
         method: 'POST',
         body: JSON.stringify({ message: text, sessionId: effectiveSessionId }),
       });
 
       // Refresh messages from server to get real IDs
       await fetchMessages(effectiveSessionId);
+      // Refresh session list if the session was auto-renamed
+      if (result.sessionName) {
+        mutateSessions();
+      }
     } catch {
       // Refresh to show error message saved by server
       await fetchMessages(effectiveSessionId);

@@ -40,6 +40,7 @@ export interface ChatProcessResult {
   newBlocks: Omit<FixedBlock, 'id' | 'userId' | 'createdAt' | 'updatedAt'>[];
   preferenceUpdates: Partial<SchedulingPreferences> | null;
   followUpQuestion: FollowUpQuestion | null;
+  sessionName: string | null;
 }
 
 function buildHistory(chatHistory: ChatMessage[]): MessagePair[] {
@@ -176,6 +177,10 @@ export async function processChatMessage(
         };
       }
 
+      const sessionName: string | null = typeof parsed.sessionName === 'string' && parsed.sessionName.trim()
+        ? parsed.sessionName.trim().slice(0, 50)
+        : null;
+
       return {
         message: parsed.message || 'Processed.',
         newTasks,
@@ -183,11 +188,12 @@ export async function processChatMessage(
         newBlocks,
         preferenceUpdates,
         followUpQuestion,
+        sessionName,
       };
     }
   } catch (parseErr) {
     console.error('[claude] JSON parse failed:', parseErr, '\nRaw text:', text);
   }
 
-  return { message: text, newTasks: [], taskUpdates: [], newBlocks: [], preferenceUpdates: null, followUpQuestion: null };
+  return { message: text, newTasks: [], taskUpdates: [], newBlocks: [], preferenceUpdates: null, followUpQuestion: null, sessionName: null };
 }

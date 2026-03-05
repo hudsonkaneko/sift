@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   let projectContext: ProjectContext | undefined;
   const { data: sessionRow } = await supabase
     .from('chat_sessions')
-    .select('task_id')
+    .select('task_id, name')
     .eq('id', sessionId)
     .eq('user_id', userId)
     .single();
@@ -273,11 +273,21 @@ export async function POST(req: Request) {
       metadata,
     });
 
+    // Auto-rename session if it's still "New Chat"
+    if (result.sessionName && sessionRow?.name === 'New Chat') {
+      await supabase
+        .from('chat_sessions')
+        .update({ name: result.sessionName, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('user_id', userId);
+    }
+
     return NextResponse.json({
       message: responseText,
       followUpQuestion: result.followUpQuestion,
       tasksAdded: tasksAdded + subtasksAdded,
       blocksAdded: result.newBlocks.length,
+      sessionName: result.sessionName,
     });
   } catch (error: unknown) {
     const errMsg = `Error: ${error instanceof Error ? error.message : 'Failed to process message'}`;

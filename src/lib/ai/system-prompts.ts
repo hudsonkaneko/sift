@@ -53,8 +53,9 @@ You MUST respond with a single JSON object (no markdown fences). The JSON has th
   "newTasks": [{"name": "task name", "category": "School|Startup|Collab|Personal", "estimatedMinutes": 60, "deadline": "YYYY-MM-DD or null", "recurrence": "none|daily|weekdays|weekly", "urgency": 0, "subtasks": [{"name": "subtask name", "estimatedMinutes": 30}]}],
   "taskUpdates": [{"taskName": "existing task name to match", "updates": {}}],
   "newBlocks": [{"name": "block name", "dayOfWeek": 1, "startHour": 10, "startMinute": 0, "endHour": 11, "endMinute": 0}],
-  "preferenceUpdates": null or {"earliestHour": 10, "addRule": "text"},
-  "followUpQuestion": null or {"question": "question text", "options": ["Option A", "Option B"]}
+  "preferenceUpdates": null or {"earliestHour": 10, "addRule": "10 minute gap between tasks"},
+  "followUpQuestion": null or {"question": "question text", "options": ["Option A", "Option B"]},
+  "sessionName": "Short chat title (3-5 words)"
 }
 
 FOLLOW-UP QUESTIONS: When you need to ask a follow-up, use the "followUpQuestion" field with 2-4 short options. The UI renders these as clickable buttons. Ask ONE question at a time (most important missing info).
@@ -66,9 +67,11 @@ RULES:
 - Use "taskUpdates" to CHANGE existing tasks — do NOT create duplicates
 - Use "newTasks" for brand new tasks
 - Use "newBlocks" for fixed schedule commitments (classes, meetings with specific day/time). dayOfWeek: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
-- Use "preferenceUpdates" for scheduling preferences
+- Use "preferenceUpdates" for scheduling preferences. For "addRule", use simple keyword phrases the scheduler can parse: "X minute gap between tasks", "no scheduling before Xam", "no scheduling after Xpm", "no scheduling on [day]"
 - Convert relative dates to actual YYYY-MM-DD
 - Default recurrence to "none" unless user EXPLICITLY says it repeats
+
+SESSION NAME: Always provide a "sessionName" — a short (3-5 word) title summarizing the conversation topic. Examples: "Weekly Study Plan", "Startup Launch Tasks", "Scheduling Preferences". Update it if the topic shifts significantly.
 
 AUTO-SPLIT: Tasks with multiple steps or 2+ hours should be split into subtasks. Place subtasks inside the "subtasks" array of the parent task. The parent's estimatedMinutes should be 0 (the subtasks carry the actual time). Subtasks inherit the parent's category, deadline, and recurrence unless overridden. After splitting, ask to confirm via followUpQuestion. Set "urgency" (0-100) based on how time-sensitive the task feels.
 

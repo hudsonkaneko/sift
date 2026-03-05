@@ -47,28 +47,15 @@ export default function ChatPanel({
 }: Props) {
   const { user } = useUser();
   const [input, setInput] = useState('');
-  const [showSessions, setShowSessions] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const sessionListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    if (!showSessions) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (sessionListRef.current && !sessionListRef.current.contains(e.target as Node)) {
-        setShowSessions(false);
-        setEditingSessionId(null);
-      }
-    };
-    window.addEventListener('mousedown', handleClickOutside);
-    return () => window.removeEventListener('mousedown', handleClickOutside);
-  }, [showSessions]);
 
   const handleSubmit = async () => {
     const text = input.trim();
@@ -95,8 +82,6 @@ export default function ChatPanel({
   const userInitials = user
     ? (user.firstName?.[0] || '') + (user.lastName?.[0] || '') || user.emailAddresses[0]?.emailAddress[0]?.toUpperCase() || '?'
     : '?';
-
-  const activeSession = sessions.find(s => s.id === activeSessionId);
 
   return (
     <>
@@ -126,29 +111,22 @@ export default function ChatPanel({
           </div>
         </div>
 
-        <div className="space-y-0.5">
-          <button
-            onClick={() => { onCreateSession(); setShowSessions(false); }}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-text-primary hover:bg-bg-tertiary transition-colors"
-          >
-            <Plus size={16} className="text-accent" />
-            New Session
-          </button>
-          <button
-            onClick={() => setShowSessions(!showSessions)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-text-primary hover:bg-bg-tertiary transition-colors"
-          >
-            <Search size={16} className="text-accent" />
-            Search
-          </button>
-        </div>
+        <button
+          onClick={onCreateSession}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-text-primary hover:bg-bg-tertiary transition-colors"
+        >
+          <Plus size={16} className="text-accent" />
+          New Chat
+        </button>
       </div>
 
-      {/* Session dropdown */}
-      {showSessions && (() => {
-        const generalSessions = sessions.filter(s => !s.taskId);
+      {/* Always-visible session list */}
+      {(() => {
+        const query = searchQuery.toLowerCase();
+        const allFiltered = sessions.filter(s => s.name.toLowerCase().includes(query));
+        const generalSessions = allFiltered.filter(s => !s.taskId);
         const projectGroups = new Map<string, { taskName: string; sessions: ChatSession[] }>();
-        for (const s of sessions) {
+        for (const s of allFiltered) {
           if (s.taskId) {
             const existing = projectGroups.get(s.taskId);
             if (existing) {
@@ -162,7 +140,7 @@ export default function ChatPanel({
         const renderSession = (session: ChatSession, isProject: boolean) => (
           <div
             key={session.id}
-            className={`group flex items-center ${isProject ? 'pl-7 pr-3' : 'px-3'} py-2 rounded-lg text-sm cursor-pointer transition-colors ${
+            className={`group flex items-center ${isProject ? 'pl-7 pr-3' : 'px-3'} py-1.5 rounded-lg text-sm cursor-pointer transition-colors ${
               session.id === activeSessionId
                 ? 'bg-accent-light text-accent font-medium'
                 : 'text-text-secondary hover:bg-bg-tertiary'
@@ -174,7 +152,6 @@ export default function ChatPanel({
                 } else {
                   onSwitchSession(session.id);
                 }
-                setShowSessions(false);
               }
             }}
           >
@@ -218,8 +195,41 @@ export default function ChatPanel({
         );
 
         return (
-          <div ref={sessionListRef} className="px-4 pb-2">
-            <div className="bg-bg-secondary border border-border rounded-xl p-2 max-h-[200px] overflow-y-auto space-y-0.5 shadow-sm">
+          <div className="flex-shrink-0 overflow-y-auto max-h-[40vh] border-b border-border">
+            {/* Search/filter input */}
+            <div className="px-4 pt-2 pb-1.5">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-bg-secondary text-xs">
+                <Search size={12} className="text-text-muted flex-shrink-0" />
+                <input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Filter..."
+                  className="bg-transparent outline-none text-text-primary placeholder-text-muted flex-1 min-w-0"
+                />
+                {(searchQuery || messages.length > 0) && (
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="text-text-muted hover:text-text-secondary transition-colors"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    {messages.length > 0 && (
+                      <button
+                        onClick={onClear}
+                        className="text-text-muted hover:text-text-secondary transition-colors"
+                      >
+                        Clear chat
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Session items */}
+            <div className="px-2 pb-2 space-y-0.5">
               {generalSessions.map(s => renderSession(s, false))}
               {projectGroups.size > 0 && generalSessions.length > 0 && (
                 <div className="border-t border-border my-1.5" />
@@ -233,22 +243,13 @@ export default function ChatPanel({
                   {group.sessions.map(s => renderSession(s, true))}
                 </div>
               ))}
+              {allFiltered.length === 0 && (
+                <div className="px-3 py-2 text-xs text-text-muted">No sessions found</div>
+              )}
             </div>
           </div>
         );
       })()}
-
-      {/* Current session label */}
-      <div className="px-5 py-2 flex items-center justify-between border-b border-border-light">
-        <span className="text-xs font-medium text-text-muted truncate">
-          {activeSession?.name || 'No session'}
-        </span>
-        {messages.length > 0 && (
-          <button onClick={onClear} className="text-xs text-text-muted hover:text-text-secondary transition-colors">
-            Clear
-          </button>
-        )}
-      </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">

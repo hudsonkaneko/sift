@@ -26,16 +26,26 @@ export function useFixedBlocks(weekOf?: string) {
   };
 
   const updateFixedBlock = async (id: string, updates: Partial<FixedBlock>) => {
-    await apiFetch(`/api/fixed-blocks/${id}`, {
+    // Optimistic update: immediately apply changes in the UI
+    const optimisticData = (fixedBlocks || []).map(b =>
+      b.id === id ? { ...b, ...updates } : b
+    );
+    mutate(optimisticData, false);
+
+    // Fire API call in background, then revalidate
+    apiFetch(`/api/fixed-blocks/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
-    });
-    mutate();
+    }).then(() => mutate());
   };
 
   const deleteFixedBlock = async (id: string) => {
-    await apiFetch(`/api/fixed-blocks/${id}`, { method: 'DELETE' });
-    mutate();
+    // Optimistic delete: immediately remove from UI
+    const optimisticData = (fixedBlocks || []).filter(b => b.id !== id);
+    mutate(optimisticData, false);
+
+    // Fire API call in background, then revalidate
+    apiFetch(`/api/fixed-blocks/${id}`, { method: 'DELETE' }).then(() => mutate());
   };
 
   return {

@@ -21,7 +21,30 @@ export async function PATCH(
   if (body.startMinute !== undefined) updates.start_minute = body.startMinute;
   if (body.endHour !== undefined) updates.end_hour = body.endHour;
   if (body.endMinute !== undefined) updates.end_minute = body.endMinute;
-  if (body.color !== undefined) updates.color = body.color;
+  if (body.color !== undefined) {
+    if (body.color === null) {
+      // Reset to calendar source color for Google events
+      const { data: block } = await supabase
+        .from('fixed_blocks')
+        .select('google_calendar_id')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .single();
+      if (block?.google_calendar_id) {
+        const { data: source } = await supabase
+          .from('google_calendar_sources')
+          .select('color')
+          .eq('user_id', userId)
+          .eq('google_calendar_id', block.google_calendar_id)
+          .single();
+        updates.color = source?.color ?? null;
+      } else {
+        updates.color = null;
+      }
+    } else {
+      updates.color = body.color;
+    }
+  }
   if (body.recurring !== undefined) updates.recurring = body.recurring;
   updates.updated_at = new Date().toISOString();
 

@@ -80,12 +80,13 @@ export async function POST(req: Request) {
     const result = await processChatMessage(enhancedMessage, existingTasks, currentPrefs, chatHistory, tone);
 
     const actions: string[] = [];
+    console.log('[chat] AI result:', { newTasks: result.newTasks.length, taskUpdates: result.taskUpdates.length, newBlocks: result.newBlocks.length });
 
     // 1. Add new tasks (with subtask support)
     let tasksAdded = 0;
     let subtasksAdded = 0;
     for (const taskData of result.newTasks) {
-      const { data: parentRow } = await supabase.from('tasks').insert({
+      const { data: parentRow, error: parentErr } = await supabase.from('tasks').insert({
         user_id: userId,
         name: taskData.name,
         category: taskData.category,
@@ -97,11 +98,16 @@ export async function POST(req: Request) {
         parent_id: taskData.parentId ?? null,
         urgency: taskData.urgency ?? 0,
       }).select('id').single();
+
+      if (parentErr) {
+        console.error('[chat] Task insert failed:', parentErr.message, taskData);
+        continue;
+      }
       tasksAdded++;
 
       if (parentRow && taskData.subtasks && taskData.subtasks.length > 0) {
         for (const sub of taskData.subtasks) {
-          await supabase.from('tasks').insert({
+          const { error: subErr } = await supabase.from('tasks').insert({
             user_id: userId,
             name: sub.name,
             category: sub.category,
@@ -113,6 +119,10 @@ export async function POST(req: Request) {
             parent_id: parentRow.id,
             urgency: sub.urgency ?? 0,
           });
+          if (subErr) {
+            console.error('[chat] Subtask insert failed:', subErr.message, sub);
+            continue;
+          }
           subtasksAdded++;
         }
       }

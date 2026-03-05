@@ -178,8 +178,8 @@ export async function processChatMessage(
         followUpQuestion,
       };
     }
-  } catch {
-    // Fall through to return raw message
+  } catch (parseErr) {
+    console.error('[claude] JSON parse failed:', parseErr, '\nRaw text:', text);
   }
 
   return { message: text, newTasks: [], taskUpdates: [], newBlocks: [], preferenceUpdates: null, followUpQuestion: null };

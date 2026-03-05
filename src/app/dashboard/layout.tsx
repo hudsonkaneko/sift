@@ -151,13 +151,7 @@ export default function DashboardLayout({
                 onBlockUpdate={(id, updates) => updateFixedBlock(id, updates)}
                 onBlockDelete={deleteFixedBlock}
                 onAddFixedBlock={(block) => addFixedBlock({ ...block, userCreated: true })}
-                onGenerateSchedule={async () => {
-                  if (gcal.hasAccounts) {
-                    await gcal.sync(weekOf);
-                    mutateBlocks();
-                  }
-                  await generateSchedule();
-                }}
+                onGenerateSchedule={generateSchedule}
                 generatingSchedule={generating}
               />
             </div>

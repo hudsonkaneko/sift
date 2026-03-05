@@ -112,12 +112,7 @@ export default function ChatPanel({
               <span className="text-base font-semibold truncate max-w-[280px]">{projectScope.taskName}</span>
             </button>
           ) : (
-            <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M17 4H7L4 8l8 12 8-12-3-4z" fill="white" opacity="0.3" />
-                <path d="M12 20L4 8l3-4h10l3 4-8 12z" stroke="white" strokeWidth="2" strokeLinejoin="round" />
-              </svg>
-            </div>
+            <img src="/logo.png" alt="Sift" className="w-9 h-9 rounded-xl" />
           )}
           <div className="flex items-center gap-2">
             <button

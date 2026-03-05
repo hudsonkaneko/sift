@@ -161,10 +161,13 @@ export async function POST(req: Request) {
   const excludedCalendarIds = new Set(
     (excludedSourcesResult.data || []).map((s: { google_calendar_id: string }) => s.google_calendar_id)
   );
-  const fixedBlocks = (blocksResult.data || []).filter(
+  const allBlocks = blocksResult.data || [];
+  const fixedBlocks = allBlocks.filter(
     (fb: { google_calendar_id: string | null }) =>
       !fb.google_calendar_id || !excludedCalendarIds.has(fb.google_calendar_id)
   );
+
+  console.log(`[generate] fixedBlocks: ${fixedBlocks.length} (of ${allBlocks.length} total, ${excludedCalendarIds.size} excluded calendars)`);
 
   const earliestHour = prefs?.earliest_hour ?? 9;
   const latestHour = prefs?.latest_hour ?? 23;
@@ -176,6 +179,12 @@ export async function POST(req: Request) {
 
   // Parse custom rules into structured constraints
   const parsedRules = parseCustomRules(customRules);
+  console.log(`[generate] customRules:`, customRules, `parsed:`, {
+    gapMinutes: parsedRules.gapMinutes,
+    blockedDays: [...parsedRules.blockedDays],
+    noScheduleBefore: parsedRules.noScheduleBefore,
+    noScheduleAfter: parsedRules.noScheduleAfter,
+  });
 
   // Delete unlocked slots (they'll be regenerated)
   if (unlockedSlotIds.length > 0) {
@@ -235,9 +244,14 @@ export async function POST(req: Request) {
   const occupiedPerDay: Map<number, Interval[]> = new Map();
   for (let d = 0; d < 7; d++) occupiedPerDay.set(d, []);
 
-  // Add fixed blocks
+  // Add fixed blocks (calendar events + user-created blocks)
   for (const fb of fixedBlocks) {
-    const intervals = occupiedPerDay.get(fb.day_of_week)!;
+    const day = fb.day_of_week;
+    if (day == null || day < 0 || day > 6) {
+      console.warn(`[generate] skipping fixed block with invalid day_of_week:`, fb.id, day);
+      continue;
+    }
+    const intervals = occupiedPerDay.get(day)!;
     intervals.push({
       start: fb.start_hour * 60 + fb.start_minute,
       end: fb.end_hour * 60 + fb.end_minute,
@@ -246,11 +260,21 @@ export async function POST(req: Request) {
 
   // Add locked slots
   for (const slot of lockedSlots) {
-    const intervals = occupiedPerDay.get(slot.day_of_week)!;
+    const day = slot.day_of_week;
+    if (day == null || day < 0 || day > 6) continue;
+    const intervals = occupiedPerDay.get(day)!;
     intervals.push({
       start: slot.start_hour * 60 + slot.start_minute,
       end: slot.end_hour * 60 + slot.end_minute,
     });
+  }
+
+  // Debug: log occupied intervals per day
+  for (let d = 0; d < 7; d++) {
+    const intervals = occupiedPerDay.get(d)!;
+    if (intervals.length > 0) {
+      console.log(`[generate] day ${d} occupied: ${intervals.map(i => `${Math.floor(i.start/60)}:${String(i.start%60).padStart(2,'0')}-${Math.floor(i.end/60)}:${String(i.end%60).padStart(2,'0')}`).join(', ')}`);
+    }
   }
 
   // Determine day order based on preferences, skipping past days for current week
@@ -286,13 +310,21 @@ export async function POST(req: Request) {
     });
   }
 
-  // Apply custom rule time overrides on top of preferences
-  const dayStart = parsedRules.noScheduleBefore
-    ? Math.max(earliestHour * 60, parsedRules.noScheduleBefore)
-    : earliestHour * 60;
-  const dayEnd = parsedRules.noScheduleAfter
-    ? Math.min(latestHour * 60, parsedRules.noScheduleAfter)
-    : latestHour * 60;
+  // Apply custom rule time overrides on top of preferences (clamp to valid range)
+  let dayStart = earliestHour * 60;
+  if (parsedRules.noScheduleBefore && parsedRules.noScheduleBefore > 0 && parsedRules.noScheduleBefore < 24 * 60) {
+    dayStart = Math.max(dayStart, parsedRules.noScheduleBefore);
+  }
+  let dayEnd = latestHour * 60;
+  if (parsedRules.noScheduleAfter && parsedRules.noScheduleAfter > 0 && parsedRules.noScheduleAfter < 24 * 60) {
+    dayEnd = Math.min(dayEnd, parsedRules.noScheduleAfter);
+  }
+  // Ensure dayStart < dayEnd
+  if (dayStart >= dayEnd) {
+    console.warn(`[generate] dayStart (${dayStart}) >= dayEnd (${dayEnd}), resetting to preference defaults`);
+    dayStart = earliestHour * 60;
+    dayEnd = latestHour * 60;
+  }
 
   // Greedily place tasks into gaps
   const newSlots: {
@@ -319,6 +351,7 @@ export async function POST(req: Request) {
         ? Math.max(dayStart, Math.ceil(currentTimeMinutes / 15) * 15)
         : dayStart;
       let gaps = findGaps(occupied, effectiveDayStart, dayEnd, minBlockMinutes);
+      console.log(`[generate] task "${task.name}" day ${day}: ${gaps.length} gaps found (occupied: ${occupied.length} intervals, window: ${effectiveDayStart}-${dayEnd})`);
 
       // Apply morning/evening preference for gap ordering
       if (!preferMornings && preferEvenings) {
@@ -371,5 +404,21 @@ export async function POST(req: Request) {
     slotsCreated: newSlots.length,
     tasksScheduled: new Set(newSlots.map(s => s.task_id)).size,
     unlockedRemoved: unlockedSlotIds.length,
+    debug: {
+      fixedBlocksTotal: allBlocks.length,
+      fixedBlocksUsed: fixedBlocks.length,
+      excludedCalendars: excludedCalendarIds.size,
+      lockedSlots: lockedSlots.length,
+      schedulableTasks: schedulableTasks.length,
+      dayOrder,
+      dayStart,
+      dayEnd,
+      parsedRules: {
+        gapMinutes: parsedRules.gapMinutes,
+        blockedDays: [...parsedRules.blockedDays],
+        noScheduleBefore: parsedRules.noScheduleBefore,
+        noScheduleAfter: parsedRules.noScheduleAfter,
+      },
+    },
   });
 }

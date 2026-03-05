@@ -100,7 +100,7 @@ export default function SessionSidebar({
   );
 
   return (
-    <div className="w-[220px] min-w-[220px] flex flex-col bg-bg-secondary border-r border-border">
+    <div className="w-[220px] min-w-[220px] h-full flex flex-col bg-bg-secondary border-r border-border">
       {/* New chat button */}
       <div className="px-3 pt-4 pb-2">
         <button

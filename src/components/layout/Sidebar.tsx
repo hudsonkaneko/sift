@@ -41,7 +41,7 @@ export default function Sidebar({
   const [showSessions, setShowSessions] = useState(true);
 
   return (
-    <div className="flex h-full border-r border-border">
+    <div className="flex h-full overflow-hidden border-r border-border">
       {/* Session list sidebar */}
       {showSessions && (
         <SessionSidebar

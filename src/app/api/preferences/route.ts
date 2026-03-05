@@ -61,6 +61,7 @@ export async function PATCH(req: Request) {
   if (body.preferEvenings !== undefined) updates.prefer_evenings = body.preferEvenings;
   if (body.avoidWeekends !== undefined) updates.avoid_weekends = body.avoidWeekends;
   if (body.customRules !== undefined) updates.custom_rules = body.customRules;
+  if (body.colorPalette !== undefined) updates.color_palette = body.colorPalette;
   updates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase

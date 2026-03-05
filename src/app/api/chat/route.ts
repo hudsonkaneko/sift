@@ -62,8 +62,9 @@ export async function POST(req: Request) {
     const currentPrefs = prefsRow ? mapPreferences(prefsRow) : {
       id: '', userId, earliestHour: 9, latestHour: 23, minBlockMinutes: 30,
       preferMornings: true, preferEvenings: true, avoidWeekends: false,
-      customRules: [], createdAt: '', updatedAt: '',
+      customRules: [], colorPalette: null, createdAt: '', updatedAt: '',
     };
+    const userPalette = prefsRow?.color_palette ?? null;
 
     // Get user tone
     const { data: userRow } = await supabase
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
     let tasksAdded = 0;
     let subtasksAdded = 0;
     for (const taskData of result.newTasks) {
-      const parentColor = taskData.color ?? (taskData.parentId ? null : randomColor());
+      const parentColor = taskData.color ?? (taskData.parentId ? null : randomColor(userPalette));
       const { data: parentRow, error: parentErr } = await supabase.from('tasks').insert({
         user_id: userId,
         name: taskData.name,

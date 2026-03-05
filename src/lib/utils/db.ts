@@ -103,6 +103,7 @@ export function mapPreferences(row: any): SchedulingPreferences {
     preferEvenings: row.prefer_evenings,
     avoidWeekends: row.avoid_weekends,
     customRules: row.custom_rules || [],
+    colorPalette: row.color_palette || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

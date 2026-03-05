@@ -30,6 +30,14 @@ export async function POST(req: Request) {
   const body = await req.json();
   const supabase = createServiceClient();
 
+  // Fetch user's custom color palette
+  const { data: prefsRow } = await supabase
+    .from('scheduling_preferences')
+    .select('color_palette')
+    .eq('user_id', userId)
+    .single();
+  const userPalette: string[] | null = prefsRow?.color_palette ?? null;
+
   // Determine color: explicit > inherit from parent > random for top-level
   let color: string | null = body.color || null;
   if (!color && body.parentId) {
@@ -41,7 +49,7 @@ export async function POST(req: Request) {
     color = parent?.color ?? null;
   }
   if (!color && !body.parentId) {
-    color = randomColor();
+    color = randomColor(userPalette);
   }
 
   const { data, error } = await supabase

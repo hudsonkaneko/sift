@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SchedulingPreferences, GoogleCalendarAccount } from '@/lib/types/domain';
+import { COLOR_PALETTE } from '@/lib/utils/format';
 
 interface Props {
   preferences: SchedulingPreferences;
@@ -159,6 +160,105 @@ export default function SettingsPanel({ preferences, onUpdate, onClose, gcal }: 
               <ToggleRow label="Prefer evenings for deep work" checked={prefs.preferEvenings} onChange={v => setPrefs(p => ({ ...p, preferEvenings: v }))} />
               <ToggleRow label="Avoid scheduling on weekends" checked={prefs.avoidWeekends} onChange={v => setPrefs(p => ({ ...p, avoidWeekends: v }))} />
             </div>
+          </div>
+
+          {/* Color Palette */}
+          <div>
+            <label className="text-xs font-medium text-text-secondary uppercase tracking-wide">Task Color Palette</label>
+            {prefs.colorPalette === null ? (
+              <p className="text-[11px] text-text-muted mt-1">
+                All colors active.{' '}
+                <button
+                  onClick={() => setPrefs(p => ({ ...p, colorPalette: COLOR_PALETTE.map(c => c.hex) }))}
+                  className="text-accent hover:underline"
+                >
+                  Click to customize
+                </button>
+              </p>
+            ) : (
+              <>
+                <p className="text-[11px] text-text-muted mt-1">
+                  New tasks will use only the selected colors.{' '}
+                  <button
+                    onClick={() => setPrefs(p => ({ ...p, colorPalette: null }))}
+                    className="text-accent hover:underline"
+                  >
+                    Reset to defaults
+                  </button>
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {COLOR_PALETTE.map(({ hex, name }) => {
+                    const selected = prefs.colorPalette!.includes(hex);
+                    const isLast = selected && prefs.colorPalette!.length === 1;
+                    return (
+                      <button
+                        key={hex}
+                        title={isLast ? `${name} (at least 1 required)` : name}
+                        onClick={() => {
+                          if (isLast) return;
+                          setPrefs(p => ({
+                            ...p,
+                            colorPalette: selected
+                              ? p.colorPalette!.filter(c => c !== hex)
+                              : [...p.colorPalette!, hex],
+                          }));
+                        }}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                          isLast ? 'cursor-not-allowed' : 'cursor-pointer'
+                        }`}
+                        style={{
+                          backgroundColor: hex,
+                          boxShadow: selected ? `0 0 0 2px var(--color-bg-primary), 0 0 0 4px ${hex}` : 'none',
+                          opacity: selected ? 1 : 0.35,
+                        }}
+                      >
+                        {selected && (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M2 7l3.5 3.5L12 4" />
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <label className="text-[11px] text-text-muted">Custom:</label>
+                  <input
+                    type="color"
+                    onChange={e => {
+                      const hex = e.target.value;
+                      if (!prefs.colorPalette!.includes(hex)) {
+                        setPrefs(p => ({ ...p, colorPalette: [...p.colorPalette!, hex] }));
+                      }
+                    }}
+                    className="w-7 h-7 rounded-md border border-border cursor-pointer bg-transparent"
+                  />
+                </div>
+                {prefs.colorPalette.filter(c => !COLOR_PALETTE.some(p => p.hex === c)).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {prefs.colorPalette.filter(c => !COLOR_PALETTE.some(p => p.hex === c)).map(hex => (
+                      <button
+                        key={hex}
+                        title={`Remove ${hex}`}
+                        onClick={() => {
+                          if (prefs.colorPalette!.length === 1) return;
+                          setPrefs(p => ({ ...p, colorPalette: p.colorPalette!.filter(c => c !== hex) }));
+                        }}
+                        className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all"
+                        style={{
+                          backgroundColor: hex,
+                          boxShadow: `0 0 0 2px var(--color-bg-primary), 0 0 0 4px ${hex}`,
+                        }}
+                      >
+                        <svg width="10" height="10" viewBox="0 0 10 10" stroke="white" strokeWidth="1.5">
+                          <path d="M1 1l8 8M9 1L1 9" />
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* Custom Rules */}

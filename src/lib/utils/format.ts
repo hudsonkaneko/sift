@@ -49,8 +49,9 @@ export function formatDeadline(deadline: string | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function randomColor(): string {
-  return COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)].hex;
+export function randomColor(palette?: string[] | null): string {
+  const colors = palette?.length ? palette : COLOR_PALETTE.map(c => c.hex);
+  return colors[Math.floor(Math.random() * colors.length)];
 }
 
 export function formatTime(hour: number, minute: number): string {

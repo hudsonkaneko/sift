@@ -116,6 +116,7 @@ export interface SchedulingPreferences {
   preferEvenings: boolean;
   avoidWeekends: boolean;
   customRules: string[];
+  colorPalette: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -128,6 +129,7 @@ export const DEFAULT_PREFERENCES: Omit<SchedulingPreferences, 'id' | 'userId' | 
   preferEvenings: true,
   avoidWeekends: false,
   customRules: [],
+  colorPalette: null,
 };
 
 export interface SchedulingRule {

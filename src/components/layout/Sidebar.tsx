@@ -56,7 +56,7 @@ export default function Sidebar({
       )}
 
       {/* Chat panel */}
-      <div className={`${showSessions ? 'w-[360px]' : 'w-[400px]'} flex flex-col bg-bg-primary`}>
+      <div className={`${showSessions ? 'w-[360px]' : 'w-[400px]'} h-full min-h-0 flex flex-col bg-bg-primary`}>
         <ChatPanel
           messages={messages}
           onSend={onSend}

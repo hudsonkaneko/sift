@@ -343,18 +343,27 @@ export function useDragDrop({
     const hour = Math.floor(snapped / 60);
     const minute = snapped % 60;
 
-    const state: CreateDragState = {
-      colIndex,
-      dayOfWeek,
-      anchorHour: hour,
-      anchorMinute: minute,
-      currentHour: hour,
-      currentMinute: minute,
-    };
-
-    setCreateDrag(state);
+    // Don't show the drag selection until the mouse actually moves —
+    // prevents visual feedback on plain clicks
+    const startY = e.clientY;
+    const DRAG_THRESHOLD_PX = 8;
+    let dragStarted = false;
 
     const handleMouseMove = (ev: MouseEvent) => {
+      if (!dragStarted) {
+        if (Math.abs(ev.clientY - startY) < DRAG_THRESHOLD_PX) return;
+        // Mouse moved enough — start the drag visually
+        dragStarted = true;
+        setCreateDrag({
+          colIndex,
+          dayOfWeek,
+          anchorHour: hour,
+          anchorMinute: minute,
+          currentHour: hour,
+          currentMinute: minute,
+        });
+      }
+
       const cd = createDragRef.current;
       if (!cd) return;
 
@@ -374,7 +383,7 @@ export function useDragDrop({
       window.removeEventListener('mouseup', handleMouseUp);
 
       const cd = createDragRef.current;
-      if (!cd) return;
+      if (!cd) { setCreateDrag(null); return; }
 
       const anchorMin = cd.anchorHour * 60 + cd.anchorMinute;
       const currentMin = cd.currentHour * 60 + cd.currentMinute;

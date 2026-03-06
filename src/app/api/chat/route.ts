@@ -153,12 +153,15 @@ export async function POST(req: Request) {
     let subtasksAdded = 0;
     for (const taskData of result.newTasks) {
       const parentColor = taskData.color ?? (taskData.parentId ? null : randomColor(userPalette));
+      // Sanitize deadline — only allow valid YYYY-MM-DD, null otherwise
+      const safeDeadline = taskData.deadline && /^\d{4}-\d{2}-\d{2}$/.test(taskData.deadline) ? taskData.deadline : null;
+
       const { data: parentRow, error: parentErr } = await supabase.from('tasks').insert({
         user_id: userId,
         name: taskData.name,
         category: taskData.category,
         estimated_minutes: taskData.estimatedMinutes,
-        deadline: taskData.deadline,
+        deadline: safeDeadline,
         recurrence: taskData.recurrence,
         completed: false,
         color: parentColor,
@@ -174,12 +177,13 @@ export async function POST(req: Request) {
 
       if (parentRow && taskData.subtasks && taskData.subtasks.length > 0) {
         for (const sub of taskData.subtasks) {
+          const safeSubDeadline = sub.deadline && /^\d{4}-\d{2}-\d{2}$/.test(sub.deadline) ? sub.deadline : null;
           const { error: subErr } = await supabase.from('tasks').insert({
             user_id: userId,
             name: sub.name,
             category: sub.category,
             estimated_minutes: sub.estimatedMinutes,
-            deadline: sub.deadline,
+            deadline: safeSubDeadline,
             recurrence: sub.recurrence,
             completed: false,
             color: sub.color ?? parentRow.color ?? null,

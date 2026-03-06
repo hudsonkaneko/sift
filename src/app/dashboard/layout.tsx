@@ -219,11 +219,13 @@ export default function DashboardLayout({
     }
   }, [activeSessionId, messages.length, fetchMessages]);
 
-  // Refresh slots after chat sends (AI may have created tasks/blocks)
+  // Refresh data after chat sends (AI may have created tasks/blocks)
   const handleChatSend = async (text: string) => {
-    await sendMessage(text);
-    mutateTasks();
-    mutateSlots();
+    try {
+      await sendMessage(text);
+    } finally {
+      await Promise.all([mutateTasks(), mutateSlots(), mutateBlocks()]);
+    }
   };
 
   return (

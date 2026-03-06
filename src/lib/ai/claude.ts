@@ -100,7 +100,9 @@ export async function processChatMessage(
 
       const parseTask = (t: Record<string, unknown>, parentCategory?: string, parentDeadline?: string | null, parentRecurrence?: string): ParsedTaskData => {
         const category = validateCategory((t.category as string) || parentCategory || 'Personal');
-        const deadline = (t.deadline as string) || parentDeadline || null;
+        const rawDeadline = (t.deadline as string) || parentDeadline || null;
+        // Validate deadline is a real YYYY-MM-DD date — reject anything else
+        const deadline = rawDeadline && /^\d{4}-\d{2}-\d{2}$/.test(rawDeadline) ? rawDeadline : null;
         const recurrence = validateRecurrence((t.recurrence as string) || parentRecurrence || 'none');
         const subtasksRaw = Array.isArray(t.subtasks) ? t.subtasks as Record<string, unknown>[] : [];
         const hasSubtasks = subtasksRaw.length > 0;
@@ -113,6 +115,11 @@ export async function processChatMessage(
           recurrence,
           urgency: Math.min(100, Math.max(0, Math.round((t.urgency as number) || 0))),
         };
+
+        // Extract parentId for project-scoped tasks
+        if (typeof t.parentId === 'string' && t.parentId) {
+          result.parentId = t.parentId;
+        }
 
         if (hasSubtasks) {
           result.subtasks = subtasksRaw.map(sub => parseTask(sub, category as string, deadline, recurrence as string));

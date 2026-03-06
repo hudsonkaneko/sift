@@ -13,9 +13,15 @@ export function buildSystemPrompt(
   existingTasks: Task[],
   currentPrefs: SchedulingPreferences,
   projectContext?: ProjectContext,
+  timezone?: string,
 ): string {
-  const today = new Date().toISOString().split('T')[0];
-  const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()];
+  // Use client timezone to compute correct local date (server runs in UTC)
+  const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const today = formatter.format(now); // YYYY-MM-DD
+  const dayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' });
+  const dayOfWeek = dayFormatter.format(now);
   const taskList = existingTasks.map(t =>
     `• "${t.name}" [${t.category}] ${t.estimatedMinutes}min, deadline: ${t.deadline || 'none'}, recurrence: ${t.recurrence}, completed: ${t.completed}`
   ).join('\n');

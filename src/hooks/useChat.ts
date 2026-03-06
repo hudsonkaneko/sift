@@ -118,7 +118,7 @@ export function useChat() {
     try {
       const result = await apiFetch<{ message: string; sessionName?: string; followUpQuestion?: { question: string; options: string[] } }>('/api/chat', {
         method: 'POST',
-        body: JSON.stringify({ message: text, sessionId: effectiveSessionId }),
+        body: JSON.stringify({ message: text, sessionId: effectiveSessionId, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
       });
 
       // Refresh messages from server to get real IDs

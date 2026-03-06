@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   const [userId, errorResponse] = await requireAuth();
   if (!userId) return errorResponse!;
 
-  const { message, sessionId } = await req.json();
+  const { message, sessionId, timezone } = await req.json();
   if (!message || !sessionId) {
     return NextResponse.json({ error: 'Missing message or sessionId' }, { status: 400 });
   }
@@ -143,7 +143,7 @@ export async function POST(req: Request) {
     const enhancedMessage = buildEnhancedMessage(message, preprocessed);
 
     // Call AI
-    const result = await processChatMessage(enhancedMessage, existingTasks, currentPrefs, chatHistory, tone, projectContext);
+    const result = await processChatMessage(enhancedMessage, existingTasks, currentPrefs, chatHistory, tone, projectContext, timezone);
 
     const actions: string[] = [];
     console.log('[chat] AI result:', { newTasks: result.newTasks.length, taskUpdates: result.taskUpdates.length, newBlocks: result.newBlocks.length });

@@ -19,7 +19,7 @@ export async function GET() {
     .single();
 
   if (error && error.code === 'PGRST116') {
-    // No row found — create defaults
+    // No row found — create default preferences
     const { data: newPrefs, error: insertError } = await supabase
       .from('scheduling_preferences')
       .insert({

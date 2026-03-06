@@ -1,8 +1,13 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import { createServiceClient } from '@/lib/supabase/server';
+
+// Cache of user IDs we've already ensured exist in the DB this process lifetime
+const ensuredUsers = new Set<string>();
 
 /**
  * Get the authenticated user ID or return a 401 response.
+ * Also ensures the user row exists in the database (handles race with Clerk webhook).
  * Use in API routes: `const [userId, errorResponse] = await requireAuth();`
  *
  * When `userId` is null, `errorResponse` is always a NextResponse (non-null assertion is safe).
@@ -12,6 +17,17 @@ export async function requireAuth(): Promise<[string, null] | [null, NextRespons
   if (!userId) {
     return [null, NextResponse.json({ error: 'Unauthorized' }, { status: 401 })];
   }
+
+  // Ensure user row exists (Clerk webhook may not have fired yet)
+  if (!ensuredUsers.has(userId)) {
+    const supabase = createServiceClient();
+    await supabase.from('users').upsert(
+      { id: userId, email: '', updated_at: new Date().toISOString() },
+      { onConflict: 'id', ignoreDuplicates: true },
+    );
+    ensuredUsers.add(userId);
+  }
+
   return [userId, null];
 }
 

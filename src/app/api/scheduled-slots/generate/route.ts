@@ -153,8 +153,11 @@ export async function POST(req: Request) {
   const tasks = tasksResult.data || [];
   const completedTaskIds = new Set((completedTaskIdsResult.data || []).map((t: { id: string }) => t.id));
   const allLockedSlots = lockedSlotsResult.data || [];
-  // Separate completed task slots (don't block time) from active locked slots (block time)
+  // Active locked slots block time; completed task slots get cleaned up
   const lockedSlots = allLockedSlots.filter((s: { task_id: string }) => !completedTaskIds.has(s.task_id));
+  const completedSlotIds = allLockedSlots
+    .filter((s: { task_id: string }) => completedTaskIds.has(s.task_id))
+    .map((s: { id: string }) => s.id);
   const unlockedSlotIds = (allSlotsResult.data || []).map(s => s.id);
   const prefs = prefsResult.data;
 
@@ -187,9 +190,10 @@ export async function POST(req: Request) {
     noScheduleAfter: parsedRules.noScheduleAfter,
   });
 
-  // Delete unlocked slots (they'll be regenerated)
-  if (unlockedSlotIds.length > 0) {
-    await supabase.from('scheduled_slots').delete().in('id', unlockedSlotIds).eq('user_id', userId);
+  // Delete unlocked slots (they'll be regenerated) and completed task slots (prevent cascading overlap)
+  const slotsToDelete = [...unlockedSlotIds, ...completedSlotIds];
+  if (slotsToDelete.length > 0) {
+    await supabase.from('scheduled_slots').delete().in('id', slotsToDelete).eq('user_id', userId);
   }
 
   // Filter schedulable tasks: incomplete, not parent shells (estimatedMinutes > 0), no locked slots already

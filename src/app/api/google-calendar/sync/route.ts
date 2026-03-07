@@ -291,9 +291,9 @@ export async function POST(req: Request) {
         const endMinute = parseInt(endMatch[2]);
         // Extract local date (YYYY-MM-DD) before the T
         const specificDate = event.start.dateTime.split('T')[0];
-        // Day of week from local date
+        // Day of week from local date (use UTC to avoid server timezone drift)
         const [y, m, d] = specificDate.split('-').map(Number);
-        const dayOfWeek = new Date(y, m - 1, d).getDay();
+        const dayOfWeek = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 
         // Deduplicate by (google_event_id, google_calendar_id) — same event
         // can appear via multiple accounts if they share a calendar

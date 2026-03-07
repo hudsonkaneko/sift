@@ -137,15 +137,20 @@ export async function POST(req: Request) {
   }
 
   const supabase = createServiceClient();
+  const weekEndStr = (() => { const d = new Date(weekOf + 'T00:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().split('T')[0]; })();
 
-  // Fetch all needed data in parallel
-  const [tasksResult, completedTaskIdsResult, lockedSlotsResult, allSlotsResult, blocksResult, prefsResult, excludedSourcesResult] = await Promise.all([
+  // Step 1: Atomic delete — remove ALL unlocked slots for this week first
+  // (prevents race conditions from concurrent generation calls)
+  await supabase.from('scheduled_slots').delete()
+    .eq('user_id', userId).eq('week_of', weekOf).eq('locked', false);
+
+  // Step 2: Fetch data we need (after delete to avoid race with concurrent gen)
+  const [tasksResult, completedTaskIdsResult, lockedSlotsResult, blocksResult, prefsResult, excludedSourcesResult] = await Promise.all([
     supabase.from('tasks').select('*').eq('user_id', userId).eq('completed', false),
     supabase.from('tasks').select('id').eq('user_id', userId).eq('completed', true),
     supabase.from('scheduled_slots').select('*').eq('user_id', userId).eq('week_of', weekOf).eq('locked', true),
-    supabase.from('scheduled_slots').select('id').eq('user_id', userId).eq('week_of', weekOf).eq('locked', false),
     supabase.from('fixed_blocks').select('*').eq('user_id', userId)
-      .or(`specific_date.is.null,and(specific_date.gte.${weekOf},specific_date.lte.${(() => { const d = new Date(weekOf + 'T00:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().split('T')[0]; })()})`),
+      .or(`specific_date.is.null,and(specific_date.gte.${weekOf},specific_date.lte.${weekEndStr})`),
     supabase.from('scheduling_preferences').select('*').eq('user_id', userId).single(),
     supabase.from('google_calendar_sources').select('google_calendar_id').eq('user_id', userId).eq('affects_scheduling', false),
   ]);
@@ -155,11 +160,15 @@ export async function POST(req: Request) {
   const allLockedSlots = lockedSlotsResult.data || [];
   // Active locked slots block time; completed task slots get cleaned up
   const lockedSlots = allLockedSlots.filter((s: { task_id: string }) => !completedTaskIds.has(s.task_id));
+  const prefs = prefsResult.data;
+
+  // Step 3: Delete completed-task locked slots (prevent cascading overlap)
   const completedSlotIds = allLockedSlots
     .filter((s: { task_id: string }) => completedTaskIds.has(s.task_id))
     .map((s: { id: string }) => s.id);
-  const unlockedSlotIds = (allSlotsResult.data || []).map(s => s.id);
-  const prefs = prefsResult.data;
+  if (completedSlotIds.length > 0) {
+    await supabase.from('scheduled_slots').delete().in('id', completedSlotIds).eq('user_id', userId);
+  }
 
   // Filter out fixed blocks from calendars excluded from scheduling
   const excludedCalendarIds = new Set(
@@ -190,24 +199,20 @@ export async function POST(req: Request) {
     noScheduleAfter: parsedRules.noScheduleAfter,
   });
 
-  // Delete unlocked slots (they'll be regenerated) and completed task slots (prevent cascading overlap)
-  const slotsToDelete = [...unlockedSlotIds, ...completedSlotIds];
-  if (slotsToDelete.length > 0) {
-    await supabase.from('scheduled_slots').delete().in('id', slotsToDelete).eq('user_id', userId);
-  }
-
-  // Filter schedulable tasks: incomplete, not parent shells (estimatedMinutes > 0), no locked slots already
-  const lockedTaskIds = new Set(lockedSlots.map(s => s.task_id));
-  const schedulableTasks = tasks.filter(t =>
-    t.estimated_minutes > 0 && !lockedTaskIds.has(t.id)
-  );
-
-  // Calculate remaining minutes for tasks that have partial locked slots
+  // Calculate locked minutes per task (tasks may have partial locked slots)
   const lockedMinutesByTask = new Map<string, number>();
   for (const slot of lockedSlots) {
     const duration = (slot.end_hour * 60 + slot.end_minute) - (slot.start_hour * 60 + slot.start_minute);
     lockedMinutesByTask.set(slot.task_id, (lockedMinutesByTask.get(slot.task_id) || 0) + duration);
   }
+
+  // Filter schedulable tasks: incomplete, not parent shells (estimatedMinutes > 0),
+  // and still have remaining time to schedule
+  const schedulableTasks = tasks.filter(t => {
+    if (t.estimated_minutes <= 0) return false;
+    const locked = lockedMinutesByTask.get(t.id) || 0;
+    return t.estimated_minutes > locked; // still has unscheduled time
+  });
 
   // Sort tasks by priority: deadline proximity + urgency
   // Use client timezone so "today" and "current time" are correct
@@ -446,15 +451,24 @@ export async function POST(req: Request) {
     }
   }
 
+  // Log final occupied state for debugging overlaps
+  for (let d = 0; d < 7; d++) {
+    const intervals = occupiedPerDay.get(d)!;
+    if (intervals.length > 0) {
+      const merged = mergeIntervals([...intervals]);
+      console.log(`[generate] day ${d} final occupied (${merged.length} merged): ${merged.map(i => `${Math.floor(i.start/60)}:${String(i.start%60).padStart(2,'0')}-${Math.floor(i.end/60)}:${String(i.end%60).padStart(2,'0')}`).join(', ')}`);
+    }
+  }
+
   return NextResponse.json({
     slotsCreated: newSlots.length,
     tasksScheduled: new Set(newSlots.map(s => s.task_id)).size,
-    unlockedRemoved: unlockedSlotIds.length,
     debug: {
       fixedBlocksTotal: allBlocks.length,
       fixedBlocksUsed: fixedBlocks.length,
       excludedCalendars: excludedCalendarIds.size,
       lockedSlots: lockedSlots.length,
+      completedSlotsRemoved: completedSlotIds.length,
       schedulableTasks: schedulableTasks.length,
       dayOrder,
       dayStart,

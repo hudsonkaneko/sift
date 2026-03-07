@@ -158,6 +158,16 @@ export async function POST(req: Request) {
     supabase.from('google_calendar_sources').select('google_calendar_id').eq('user_id', userId).eq('affects_scheduling', false),
   ]);
 
+  // Check for query errors
+  if (blocksResult.error) {
+    console.error('[generate] ERROR fetching fixed blocks:', blocksResult.error);
+    return NextResponse.json({ error: 'Failed to fetch calendar events: ' + blocksResult.error.message }, { status: 500 });
+  }
+  if (tasksResult.error) {
+    console.error('[generate] ERROR fetching tasks:', tasksResult.error);
+    return NextResponse.json({ error: 'Failed to fetch tasks: ' + tasksResult.error.message }, { status: 500 });
+  }
+
   const tasks = tasksResult.data || [];
   const completedTaskIds = new Set((completedTaskIdsResult.data || []).map((t: { id: string }) => t.id));
   const allLockedSlots = lockedSlotsResult.data || [];
@@ -183,7 +193,13 @@ export async function POST(req: Request) {
       !fb.google_calendar_id || !excludedCalendarIds.has(fb.google_calendar_id)
   );
 
-  console.log(`[generate] fixedBlocks: ${fixedBlocks.length} (of ${allBlocks.length} total, ${excludedCalendarIds.size} excluded calendars)`);
+  // Log block details for debugging overlaps
+  const recurringBlocks = fixedBlocks.filter((fb: { specific_date: string | null }) => !fb.specific_date);
+  const dateBlocks = fixedBlocks.filter((fb: { specific_date: string | null }) => fb.specific_date);
+  console.log(`[generate] fixedBlocks: ${fixedBlocks.length} (${recurringBlocks.length} recurring, ${dateBlocks.length} date-specific, ${allBlocks.length - fixedBlocks.length} excluded)`);
+  for (const fb of fixedBlocks) {
+    console.log(`[generate]   block: day=${fb.day_of_week} ${fb.start_hour}:${String(fb.start_minute).padStart(2,'0')}-${fb.end_hour}:${String(fb.end_minute).padStart(2,'0')} "${fb.name}" (date=${fb.specific_date || 'recurring'}, gcal=${!!fb.google_event_id})`);
+  }
 
   const earliestHour = prefs?.earliest_hour ?? 9;
   const latestHour = prefs?.latest_hour ?? 23;
@@ -380,17 +396,10 @@ export async function POST(req: Request) {
     const dlDay = deadlineDayInWeek(task);
     let taskDayOrder = dayOrder;
     if (dlDay !== null) {
-      // Put days up to the deadline first (sorted ascending), then days after
-      const beforeOrOn = dayOrder.filter(d => {
-        const dAdj = d === 0 ? 7 : d;
-        const dlAdj = dlDay === 0 ? 7 : dlDay;
-        return dAdj <= dlAdj;
-      });
-      const after = dayOrder.filter(d => {
-        const dAdj = d === 0 ? 7 : d;
-        const dlAdj = dlDay === 0 ? 7 : dlDay;
-        return dAdj > dlAdj;
-      });
+      // Put days up to the deadline first, then days after
+      // (day_of_week 0=Sun is start of week, consistent with weekOf)
+      const beforeOrOn = dayOrder.filter(d => d <= dlDay);
+      const after = dayOrder.filter(d => d > dlDay);
       taskDayOrder = [...beforeOrOn, ...after];
     }
 
@@ -464,8 +473,15 @@ export async function POST(req: Request) {
     slotsCreated: newSlots.length,
     tasksScheduled: new Set(newSlots.map(s => s.task_id)).size,
     debug: {
+      weekOf,
+      weekEndStr,
+      isCurrentWeek,
+      todayDayOfWeek,
       fixedBlocksTotal: allBlocks.length,
       fixedBlocksUsed: fixedBlocks.length,
+      fixedBlocksByDay: Object.fromEntries(
+        Array.from({ length: 7 }, (_, d) => [d, fixedBlocks.filter((fb: { day_of_week: number }) => fb.day_of_week === d).length])
+      ),
       excludedCalendars: excludedCalendarIds.size,
       lockedSlots: lockedSlots.length,
       completedSlotsRemoved: completedSlotIds.length,

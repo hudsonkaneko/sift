@@ -3,8 +3,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
 import { apiFetch } from '@/lib/utils/api';
-import { mapScheduledSlot, mapFixedBlock } from '@/lib/utils/db';
-import type { ScheduledSlotWithTask, FixedBlock, Task } from '@/lib/types/domain';
+import { mapScheduledSlot } from '@/lib/utils/db';
+import type { ScheduledSlotWithTask, Task } from '@/lib/types/domain';
 
 function getSunday(date: Date): string {
   const d = new Date(date);
@@ -45,11 +45,6 @@ const slotsFetcher = async (url: string) => {
   return rows.map(mapSlotWithTask);
 };
 
-const blocksFetcher = async (url: string) => {
-  const rows = await apiFetch<unknown[]>(url);
-  return rows.map(mapFixedBlock);
-};
-
 export function useSchedule() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [generating, setGenerating] = useState(false);
@@ -64,11 +59,6 @@ export function useSchedule() {
     data: slots,
     mutate: mutateSlots,
   } = useSWR(`/api/scheduled-slots?weekOf=${weekOf}`, slotsFetcher);
-
-  const {
-    data: fixedBlocks,
-    mutate: mutateBlocks,
-  } = useSWR('/api/fixed-blocks', blocksFetcher);
 
   const navigateWeek = useCallback((delta: number) => {
     setWeekOffset(prev => prev + delta);
@@ -168,7 +158,6 @@ export function useSchedule() {
   return {
     weekOf,
     slots: slots || [],
-    fixedBlocks: fixedBlocks || [],
     isCurrentWeek,
     generating,
     navigateWeek,
@@ -178,6 +167,5 @@ export function useSchedule() {
     mergeMove,
     generateSchedule,
     mutateSlots,
-    mutateBlocks,
   };
 }

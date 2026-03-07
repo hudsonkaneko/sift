@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import type { ScheduledSlotWithTask, FixedBlock, Task } from '@/lib/types/domain';
-import { DAYS, DAY_INDICES, HOUR_HEIGHT, START_HOUR, END_HOUR, GRID_PAD_TOP, SNAP_MINUTES, getWeekDates, formatWeekLabel } from './constants';
+import { DAYS, DAY_INDICES, HOUR_HEIGHT, START_HOUR, END_HOUR, GRID_PAD_TOP, SNAP_MINUTES, getWeekDates, dateToDayOfMonth, dateToDayOfWeek, formatWeekLabel } from './constants';
 import TimeColumn from './TimeColumn';
 import DayColumn from './DayColumn';
 import EventFormModal, { type EventFormState } from './EventFormModal';
@@ -100,7 +100,7 @@ export default function CalendarView({
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  const todayDayOfWeek = now.getDay();
+  const todayDateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const weekDates = getWeekDates(weekOf);
 
   // ─── Drag system ───
@@ -295,21 +295,24 @@ export default function CalendarView({
       {/* Day headers */}
       <div className="flex border-b border-border-light">
         <div className="w-14 flex-shrink-0" />
-        {DAY_INDICES.map(i => (
-          <div
-            key={i}
-            className={`flex-1 text-center py-2 border-r border-border-light last:border-r-0 ${
-              isCurrentWeek && i === todayDayOfWeek ? 'bg-accent/5' : ''
-            }`}
-          >
-            <div className="text-[10px] text-text-muted uppercase tracking-wider">{DAYS[i]}</div>
-            <div className={`text-sm font-semibold ${
-              isCurrentWeek && i === todayDayOfWeek ? 'text-accent' : 'text-text-primary'
-            }`}>
-              {weekDates[i]}
+        {DAY_INDICES.map(i => {
+          const isTodayCol = weekDates[i] === todayDateStr;
+          return (
+            <div
+              key={i}
+              className={`flex-1 text-center py-2 border-r border-border-light last:border-r-0 ${
+                isTodayCol ? 'bg-accent/5' : ''
+              }`}
+            >
+              <div className="text-[10px] text-text-muted uppercase tracking-wider">{DAYS[i]}</div>
+              <div className={`text-sm font-semibold ${
+                isTodayCol ? 'text-accent' : 'text-text-primary'
+              }`}>
+                {dateToDayOfMonth(weekDates[i])}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Grid */}
@@ -317,20 +320,22 @@ export default function CalendarView({
         <div className="flex" style={{ minHeight: gridHeight }}>
           <TimeColumn
             now={now}
-            isCurrentWeek={isCurrentWeek}
-            todayDayOfWeek={todayDayOfWeek}
+            isToday={weekDates.includes(todayDateStr)}
           />
 
           {DAY_INDICES.map(dayIndex => {
-            const dayBlocks = fixedBlocks.filter(b => b.dayOfWeek === dayIndex);
-            const daySlots = slots.filter(s => s.dayOfWeek === dayIndex);
+            const dateStr = weekDates[dayIndex];
+            const dayBlocks = fixedBlocks.filter(b =>
+              b.specificDate ? b.specificDate === dateStr : b.dayOfWeek === dayIndex
+            );
+            const daySlots = slots.filter(s => s.scheduledDate === dateStr);
 
             return (
               <DayColumn
                 key={dayIndex}
                 dayIndex={dayIndex}
-                dayDate={weekDates[dayIndex]}
-                isToday={isCurrentWeek && dayIndex === todayDayOfWeek}
+                dayDate={dateStr}
+                isToday={dateStr === todayDateStr}
                 blocks={dayBlocks}
                 slots={daySlots}
                 dragState={dragState}

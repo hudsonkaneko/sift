@@ -14,7 +14,7 @@ import { toTimeRanges, computeOverlapLayout } from './overlapLayout';
 
 interface Props {
   dayIndex: number;
-  dayDate: number;
+  dayDate: string;
   isToday: boolean;
   blocks: FixedBlock[];
   slots: ScheduledSlotWithTask[];
@@ -33,6 +33,7 @@ const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR
 
 export default function DayColumn({
   dayIndex,
+  isToday,
   blocks,
   slots,
   dragState,
@@ -45,9 +46,8 @@ export default function DayColumn({
   onBlockContextMenu,
   columnRef,
 }: Props) {
-  // Current time indicator
+  // Current time indicator — only on today's actual date, not same-DOW in other weeks
   const now = new Date();
-  const isCurrentWeekDay = now.getDay() === dayIndex;
 
   // Overlap layout
   const overlapMap = useMemo(
@@ -91,7 +91,7 @@ export default function DayColumn({
       ))}
 
       {/* Current time line */}
-      {isCurrentWeekDay && now.getHours() >= START_HOUR && now.getHours() < END_HOUR && (
+      {isToday && now.getHours() >= START_HOUR && now.getHours() < END_HOUR && (
         <div
           className="absolute left-0 right-0 z-20 pointer-events-none"
           style={{

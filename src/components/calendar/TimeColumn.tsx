@@ -5,17 +5,16 @@ import { formatTime } from '@/lib/utils/format';
 
 interface Props {
   now: Date;
-  isCurrentWeek: boolean;
-  todayDayOfWeek: number;
+  isToday: boolean;
 }
 
-export default function TimeColumn({ now, isCurrentWeek, todayDayOfWeek }: Props) {
+export default function TimeColumn({ now, isToday }: Props) {
   const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 
   // Current time position
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
-  const showCurrentTime = isCurrentWeek && currentHour >= START_HOUR && currentHour < END_HOUR;
+  const showCurrentTime = isToday && currentHour >= START_HOUR && currentHour < END_HOUR;
   const currentTimePx = showCurrentTime
     ? ((currentHour - START_HOUR) + currentMinute / 60) * HOUR_HEIGHT + GRID_PAD_TOP
     : -1;

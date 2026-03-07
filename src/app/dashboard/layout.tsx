@@ -83,13 +83,13 @@ export default function DashboardLayout({
 
     if (!completed || !isCurrentWeek) return;
 
-    const todayDow = new Date().getDay();
     const now = new Date();
+    const todayDateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
     // Find slots for the completed task today
     const completedSlots = (slots || []).filter(
-      s => s.taskId === taskId && s.dayOfWeek === todayDow
+      s => s.taskId === taskId && s.scheduledDate === todayDateStr
     );
     if (completedSlots.length === 0) return;
 
@@ -104,7 +104,7 @@ export default function DashboardLayout({
 
     // Find next incomplete slot on same day, starting after the completed slot ends
     const candidates = (slots || []).filter(s => {
-      if (s.dayOfWeek !== todayDow) return false;
+      if (s.scheduledDate !== todayDateStr) return false;
       if (s.taskId === taskId) return false; // exclude same-task split slots
       const startMin = s.startHour * 60 + s.startMinute;
       if (startMin <= completedEndMin) return false;

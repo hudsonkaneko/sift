@@ -55,13 +55,20 @@ export function getBlockStyle(startHour: number, startMinute: number, endHour: n
   return { top, height };
 }
 
-export function getWeekDates(weekOf: string): number[] {
-  const sun = new Date(weekOf + 'T00:00:00');
+export function getWeekDates(weekOf: string): string[] {
   return DAY_INDICES.map(i => {
-    const d = new Date(sun);
-    d.setDate(sun.getDate() + i);
-    return d.getDate();
+    const d = new Date(weekOf + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + i);
+    return d.toISOString().split('T')[0];
   });
+}
+
+export function dateToDayOfMonth(dateStr: string): number {
+  return new Date(dateStr + 'T12:00:00Z').getUTCDate();
+}
+
+export function dateToDayOfWeek(dateStr: string): number {
+  return new Date(dateStr + 'T12:00:00Z').getUTCDay();
 }
 
 export function formatWeekLabel(weekOf: string): string {

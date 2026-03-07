@@ -136,8 +136,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'weekOf is required' }, { status: 400 });
   }
 
+  console.log(`[generate] === START === weekOf=${weekOf}, timezone=${timezone}`);
+
   const supabase = createServiceClient();
   const weekEndStr = (() => { const d = new Date(weekOf + 'T00:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().split('T')[0]; })();
+  console.log(`[generate] date range: ${weekOf} to ${weekEndStr}`);
 
   // Step 1: Atomic delete — remove ALL unlocked slots for this week first
   // (prevents race conditions from concurrent generation calls)
@@ -318,6 +321,7 @@ export async function POST(req: Request) {
   const todaySunday = new Date(todayMidnight);
   todaySunday.setDate(todaySunday.getDate() - todaySunday.getDay());
   const isCurrentWeek = weekOfSunday.getTime() === todaySunday.getTime();
+  console.log(`[generate] isCurrentWeek=${isCurrentWeek}, todayDayOfWeek=${todayDayOfWeek}, todayMidnight=${todayMidnight.toISOString()}, weekOfSunday=${weekOfSunday.toISOString()}, todaySunday=${todaySunday.toISOString()}`);
 
   let dayOrder: number[];
   if (avoidWeekends) {
@@ -333,15 +337,11 @@ export async function POST(req: Request) {
 
   // Only schedule on today and future days if generating for the current week
   if (isCurrentWeek) {
-    // dayOrder may have Sunday (0) at the end after weekdays (1-6),
-    // so compare by position in the week relative to today
-    dayOrder = dayOrder.filter(d => {
-      // Treat Sunday (0) as 7 for ordering when it comes after Saturday
-      const dAdj = d === 0 ? 7 : d;
-      const todayAdj = todayDayOfWeek === 0 ? 7 : todayDayOfWeek;
-      return dAdj >= todayAdj;
-    });
+    // Sunday (0) is the FIRST day of the week (same day as weekOf),
+    // so simple numeric comparison works: any day < today is in the past
+    dayOrder = dayOrder.filter(d => d >= todayDayOfWeek);
   }
+  console.log(`[generate] dayOrder after filtering: [${dayOrder.join(', ')}]`);
 
   // Apply custom rule time overrides on top of preferences (clamp to valid range)
   let dayStart = earliestHour * 60;

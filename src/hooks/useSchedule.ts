@@ -9,7 +9,12 @@ import type { ScheduledSlotWithTask, FixedBlock, Task } from '@/lib/types/domain
 function getSunday(date: Date): string {
   const d = new Date(date);
   d.setDate(d.getDate() - d.getDay());
-  return d.toISOString().split('T')[0];
+  // Use local date parts — toISOString() would shift the date by 1 day
+  // for users in negative UTC offsets (e.g. PST after 4pm)
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

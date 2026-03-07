@@ -165,12 +165,9 @@ export function useSchedule() {
         method: 'POST',
         body: JSON.stringify({ weekOf, timezone: tz }),
       });
-      console.log(`[useSchedule] generateSchedule result:`, result);
       if (result?.debug) {
-        const d = result.debug;
-        console.log(`[generate-debug] isCurrentWeek=${d.isCurrentWeek}, todayDateStr="${d.todayDateStr}", weekOf="${d.weekOf}"`);
-        console.log(`[generate-debug] schedulableDates=[${d.schedulableDates?.join(', ')}]`);
-        console.log(`[generate-debug] slotsCreated=${result.slotsCreated}, tasksScheduled=${result.tasksScheduled}`);
+        console.log('%c[GENERATE DEBUG] Copy the object below and paste to Claude:', 'font-weight:bold;color:#f59e0b;font-size:14px');
+        console.log(JSON.stringify(result.debug, null, 2));
       }
       await mutateSlots();
     } finally {

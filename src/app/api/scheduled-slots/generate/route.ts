@@ -142,10 +142,44 @@ export async function POST(req: Request) {
   const weekEndStr = (() => { const d = new Date(weekOf + 'T00:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().split('T')[0]; })();
   console.log(`[generate] date range: ${weekOf} to ${weekEndStr}`);
 
-  // Step 1: Atomic delete — remove ALL unlocked slots for this week first
-  // (prevents race conditions from concurrent generation calls)
-  await supabase.from('scheduled_slots').delete()
-    .eq('user_id', userId).eq('week_of', weekOf).eq('locked', false);
+  // Compute today's day-of-week BEFORE deleting, so we only delete today+future
+  const tz = timezone || 'UTC';
+  const now = new Date();
+  const localParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+    weekday: 'short',
+  }).formatToParts(now);
+  const localHour = parseInt(localParts.find(p => p.type === 'hour')!.value);
+  const localMinute = parseInt(localParts.find(p => p.type === 'minute')!.value);
+  const localYear = parseInt(localParts.find(p => p.type === 'year')!.value);
+  const localMonth = parseInt(localParts.find(p => p.type === 'month')!.value);
+  const localDay = parseInt(localParts.find(p => p.type === 'day')!.value);
+  const todayMidnight = new Date(localYear, localMonth - 1, localDay);
+  const currentTimeMinutes = localHour * 60 + localMinute;
+  const todayDayOfWeek = todayMidnight.getDay();
+
+  // Determine if this is the current week
+  const weekOfDate = new Date(weekOf + 'T00:00:00');
+  const weekOfSunday = new Date(weekOfDate);
+  weekOfSunday.setDate(weekOfSunday.getDate() - weekOfSunday.getDay());
+  const todaySunday = new Date(todayMidnight);
+  todaySunday.setDate(todaySunday.getDate() - todaySunday.getDay());
+  const isCurrentWeek = weekOfSunday.getTime() === todaySunday.getTime();
+  console.log(`[generate] isCurrentWeek=${isCurrentWeek}, todayDayOfWeek=${todayDayOfWeek}`);
+
+  // Step 1: Delete unlocked slots that will be regenerated
+  // For current week: only delete today+future days (preserve past days' schedule)
+  // For other weeks: delete all unlocked slots
+  if (isCurrentWeek) {
+    await supabase.from('scheduled_slots').delete()
+      .eq('user_id', userId).eq('week_of', weekOf).eq('locked', false)
+      .gte('day_of_week', todayDayOfWeek);
+  } else {
+    await supabase.from('scheduled_slots').delete()
+      .eq('user_id', userId).eq('week_of', weekOf).eq('locked', false);
+  }
 
   // Step 2: Fetch data we need (after delete to avoid race with concurrent gen)
   const [tasksResult, completedTaskIdsResult, lockedSlotsResult, blocksResult, prefsResult, excludedSourcesResult] = await Promise.all([
@@ -233,25 +267,6 @@ export async function POST(req: Request) {
     return t.estimated_minutes > locked; // still has unscheduled time
   });
 
-  // Sort tasks by priority: deadline proximity + urgency
-  // Use client timezone so "today" and "current time" are correct
-  // (Vercel runs in UTC; without this, a PST user at 2pm would look like 10pm to the server)
-  const now = new Date();
-  const tz = timezone || 'UTC';
-  const localParts = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-    weekday: 'short',
-  }).formatToParts(now);
-  const localHour = parseInt(localParts.find(p => p.type === 'hour')!.value);
-  const localMinute = parseInt(localParts.find(p => p.type === 'minute')!.value);
-  const localYear = parseInt(localParts.find(p => p.type === 'year')!.value);
-  const localMonth = parseInt(localParts.find(p => p.type === 'month')!.value);
-  const localDay = parseInt(localParts.find(p => p.type === 'day')!.value);
-  const todayMidnight = new Date(localYear, localMonth - 1, localDay);
-  const currentTimeMinutes = localHour * 60 + localMinute;
-
   // Tiered priority: deadline proximity dominates (tiers 200+ apart),
   // urgency (0-100) only differentiates within the same deadline tier.
   function taskPriority(t: { deadline: string | null; urgency: number; estimated_minutes: number }): number {
@@ -330,15 +345,6 @@ export async function POST(req: Request) {
   }
 
   // Determine day order based on preferences, skipping past days for current week
-  const todayDayOfWeek = todayMidnight.getDay(); // 0=Sun, 1=Mon, ...
-  const weekOfDate = new Date(weekOf + 'T00:00:00');
-  const weekOfSunday = new Date(weekOfDate);
-  weekOfSunday.setDate(weekOfSunday.getDate() - weekOfSunday.getDay());
-  const todaySunday = new Date(todayMidnight);
-  todaySunday.setDate(todaySunday.getDate() - todaySunday.getDay());
-  const isCurrentWeek = weekOfSunday.getTime() === todaySunday.getTime();
-  console.log(`[generate] isCurrentWeek=${isCurrentWeek}, todayDayOfWeek=${todayDayOfWeek}, todayMidnight=${todayMidnight.toISOString()}, weekOfSunday=${weekOfSunday.toISOString()}, todaySunday=${todaySunday.toISOString()}`);
-
   let dayOrder: number[];
   if (avoidWeekends) {
     dayOrder = [1, 2, 3, 4, 5]; // Mon-Fri

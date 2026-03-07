@@ -190,6 +190,20 @@ export default function DashboardLayout({
     }
   }, [gcal.hasAccounts, gcal.accounts.length, mutateSources]);
 
+  // Wrap generateSchedule to sync GCal first (avoids race condition where
+  // tasks land on top of calendar events not yet synced)
+  const handleGenerateSchedule = useCallback(async () => {
+    if (gcal.hasAccounts) {
+      try {
+        await gcal.sync(weekOf);
+        await mutateBlocks();
+      } catch (e) {
+        console.warn('[dashboard] gcal sync failed, proceeding with cached blocks:', e);
+      }
+    }
+    await generateSchedule();
+  }, [gcal.hasAccounts, gcal.sync, weekOf, mutateBlocks, generateSchedule]);
+
   // Filter fixed blocks by visibility state
   const filteredBlocks = useMemo(() => {
     if (!fixedBlocks) return [];
@@ -268,7 +282,7 @@ export default function DashboardLayout({
                 onBlockUpdate={(id, updates) => updateFixedBlock(id, updates)}
                 onBlockDelete={deleteFixedBlock}
                 onAddFixedBlock={(block) => addFixedBlock({ ...block, userCreated: true })}
-                onGenerateSchedule={generateSchedule}
+                onGenerateSchedule={handleGenerateSchedule}
                 generatingSchedule={generating}
               />
             </div>

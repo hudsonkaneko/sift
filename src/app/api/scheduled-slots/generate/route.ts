@@ -215,6 +215,12 @@ export async function POST(req: Request) {
   const lockedSlots = allLockedSlots.filter((s: { task_id: string }) => !completedTaskIds.has(s.task_id));
   const prefs = prefsResult.data;
 
+  // Cross-week deduction: fetch ALL slots across all weeks to prevent task duplication
+  const { data: allTaskSlots } = await supabase
+    .from('scheduled_slots')
+    .select('task_id, start_hour, start_minute, end_hour, end_minute, scheduled_date, locked')
+    .eq('user_id', userId);
+
   // Step 3: Delete completed-task locked slots (prevent cascading overlap)
   const completedSlotIds = allLockedSlots
     .filter((s: { task_id: string }) => completedTaskIds.has(s.task_id))
@@ -258,18 +264,26 @@ export async function POST(req: Request) {
     noScheduleAfter: parsedRules.noScheduleAfter,
   });
 
-  // Calculate locked minutes per task (tasks may have partial locked slots)
-  const lockedMinutesByTask = new Map<string, number>();
-  for (const slot of lockedSlots) {
+  // Cross-week scheduled minutes: count time already committed to each task.
+  // Other weeks: count ALL slots (locked + unlocked) — committed schedule.
+  // Current week: count only LOCKED slots (unlocked were deleted, will be regenerated).
+  const scheduledMinutesByTask = new Map<string, number>();
+  for (const slot of (allTaskSlots || [])) {
+    if (completedTaskIds.has(slot.task_id)) continue;
+    const slotDate = slot.scheduled_date;
+    const isInCurrentWeek = slotDate >= weekDates[0] && slotDate <= weekDates[6];
+    // Current week: only count locked (unlocked were just deleted above)
+    // Other weeks: count all slots (they represent committed schedule)
+    if (isInCurrentWeek && !slot.locked) continue;
     const duration = (slot.end_hour * 60 + slot.end_minute) - (slot.start_hour * 60 + slot.start_minute);
-    lockedMinutesByTask.set(slot.task_id, (lockedMinutesByTask.get(slot.task_id) || 0) + duration);
+    scheduledMinutesByTask.set(slot.task_id, (scheduledMinutesByTask.get(slot.task_id) || 0) + duration);
   }
 
   // Filter schedulable tasks: incomplete, not parent shells (estimatedMinutes > 0),
   // and still have remaining time to schedule
   const schedulableTasks = tasks.filter(t => {
     if (t.estimated_minutes <= 0) return false;
-    const locked = lockedMinutesByTask.get(t.id) || 0;
+    const locked = scheduledMinutesByTask.get(t.id) || 0;
     return t.estimated_minutes > locked; // still has unscheduled time
   });
 
@@ -420,10 +434,10 @@ export async function POST(req: Request) {
 
   console.log(`[generate] --- TASK PLACEMENT (${schedulableTasks.length} tasks, window=${dayStart}-${dayEnd}) ---`);
   for (const task of schedulableTasks) {
-    let remaining = task.estimated_minutes - (lockedMinutesByTask.get(task.id) || 0);
+    let remaining = task.estimated_minutes - (scheduledMinutesByTask.get(task.id) || 0);
     if (remaining <= 0) continue;
 
-    console.log(`[generate] TASK "${task.name}" (${task.id.slice(0,8)}): est=${task.estimated_minutes}min, locked=${lockedMinutesByTask.get(task.id) || 0}min, remaining=${remaining}min, priority=${taskPriority(task)}`);
+    console.log(`[generate] TASK "${task.name}" (${task.id.slice(0,8)}): est=${task.estimated_minutes}min, scheduled=${scheduledMinutesByTask.get(task.id) || 0}min, remaining=${remaining}min, priority=${taskPriority(task)}`);
 
     // Deadline-aware date ordering: prefer dates on/before the deadline
     const dlDate = deadlineDateInWeek(task);

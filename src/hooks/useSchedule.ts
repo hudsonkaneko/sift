@@ -58,7 +58,9 @@ export function useSchedule() {
   const weekOf = useMemo(() => {
     const now = new Date();
     now.setDate(now.getDate() + weekOffset * 7);
-    return getSunday(now);
+    const result = getSunday(now);
+    console.log(`[useSchedule] weekOf computed: now=${new Date().toISOString()}, offset=${weekOffset}, adjusted=${now.toISOString()}, getSunday→"${result}"`);
+    return result;
   }, [weekOffset]);
 
   const {
@@ -153,16 +155,19 @@ export function useSchedule() {
   const generateSchedule = useCallback(async () => {
     if (generating) return; // prevent concurrent generation
     setGenerating(true);
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    console.log(`[useSchedule] generateSchedule: weekOf="${weekOf}", timezone="${tz}", weekOffset=${weekOffset}, now=${new Date().toISOString()}`);
     try {
-      await apiFetch('/api/scheduled-slots/generate', {
+      const result = await apiFetch('/api/scheduled-slots/generate', {
         method: 'POST',
-        body: JSON.stringify({ weekOf, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+        body: JSON.stringify({ weekOf, timezone: tz }),
       });
+      console.log(`[useSchedule] generateSchedule result:`, result);
       await mutateSlots();
     } finally {
       setGenerating(false);
     }
-  }, [weekOf, generating, mutateSlots]);
+  }, [weekOf, weekOffset, generating, mutateSlots]);
 
   const isCurrentWeek = useMemo(() => {
     return weekOf === getSunday(new Date());

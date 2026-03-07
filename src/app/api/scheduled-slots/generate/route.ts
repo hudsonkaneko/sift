@@ -135,7 +135,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'weekOf is required' }, { status: 400 });
   }
 
-  console.log(`[generate] === START === weekOf=${weekOf}, timezone=${timezone}`);
+  console.log(`[generate] === START === weekOf=${weekOf}, timezone=${timezone}, serverTime=${new Date().toISOString()}`);
 
   const supabase = createServiceClient();
 
@@ -147,7 +147,8 @@ export async function POST(req: Request) {
     weekDates.push(d.toISOString().split('T')[0]);
   }
   const weekEndStr = weekDates[6];
-  console.log(`[generate] date range: ${weekOf} to ${weekEndStr}`);
+  console.log(`[generate] weekDates=[${weekDates.join(', ')}]`);
+  console.log(`[generate] weekDates DOWs=[${weekDates.map(d => new Date(d + 'T12:00:00Z').getUTCDay()).join(', ')}]`);
 
   // Compute today's local date string using timezone-aware formatting
   const tz = timezone || 'UTC';
@@ -166,23 +167,32 @@ export async function POST(req: Request) {
   const todayDateStr = `${localYear}-${String(localMonth).padStart(2, '0')}-${String(localDay).padStart(2, '0')}`;
   const currentTimeMinutes = localHour * 60 + localMinute;
 
+  console.log(`[generate] Intl parts: year=${localYear} month=${localMonth} day=${localDay} hour=${localHour} min=${localMinute}`);
+  console.log(`[generate] todayDateStr="${todayDateStr}", currentTimeMinutes=${currentTimeMinutes}`);
+
   // Determine if this is the current week (today falls within the week's date range)
   const isCurrentWeek = todayDateStr >= weekDates[0] && todayDateStr <= weekDates[6];
-  console.log(`[generate] isCurrentWeek=${isCurrentWeek}, todayDateStr=${todayDateStr}`);
+  console.log(`[generate] isCurrentWeek=${isCurrentWeek} (${todayDateStr} >= ${weekDates[0]} && ${todayDateStr} <= ${weekDates[6]})`);
 
   // Step 1: Delete unlocked slots that will be regenerated
   // For current week: only delete today+future days (preserve past days' schedule)
   // For other weeks: delete all unlocked slots
   if (isCurrentWeek) {
-    await supabase.from('scheduled_slots').delete()
+    console.log(`[generate] DELETE unlocked slots where scheduled_date >= "${todayDateStr}" AND <= "${weekEndStr}"`);
+    const delResult = await supabase.from('scheduled_slots').delete()
       .eq('user_id', userId).eq('locked', false)
       .gte('scheduled_date', todayDateStr)
-      .lte('scheduled_date', weekEndStr);
+      .lte('scheduled_date', weekEndStr)
+      .select('id, scheduled_date, day_of_week');
+    console.log(`[generate] deleted ${delResult.data?.length ?? 0} unlocked slots:`, delResult.data?.map((s: { id: string; scheduled_date: string; day_of_week: number }) => `${s.scheduled_date}(dow=${s.day_of_week})`));
   } else {
-    await supabase.from('scheduled_slots').delete()
+    console.log(`[generate] DELETE unlocked slots where scheduled_date >= "${weekDates[0]}" AND <= "${weekEndStr}"`);
+    const delResult = await supabase.from('scheduled_slots').delete()
       .eq('user_id', userId).eq('locked', false)
       .gte('scheduled_date', weekDates[0])
-      .lte('scheduled_date', weekEndStr);
+      .lte('scheduled_date', weekEndStr)
+      .select('id, scheduled_date, day_of_week');
+    console.log(`[generate] deleted ${delResult.data?.length ?? 0} unlocked slots:`, delResult.data?.map((s: { id: string; scheduled_date: string; day_of_week: number }) => `${s.scheduled_date}(dow=${s.day_of_week})`));
   }
 
   // Step 2: Fetch data we need (after delete to avoid race with concurrent gen)
@@ -356,12 +366,16 @@ export async function POST(req: Request) {
   }
 
   // Filter to schedulable dates
+  console.log(`[generate] --- DATE FILTERING (avoidWeekends=${avoidWeekends}, blockedDays=[${[...parsedRules.blockedDays]}]) ---`);
   let schedulableDates = weekDates.filter(dateStr => {
     const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
-    if (avoidWeekends && (dow === 0 || dow === 6)) return false;
-    if (parsedRules.blockedDays.has(dow)) return false;
-    if (isCurrentWeek && dateStr < todayDateStr) return false;
-    return true;
+    const reasons: string[] = [];
+    if (avoidWeekends && (dow === 0 || dow === 6)) reasons.push('weekend');
+    if (parsedRules.blockedDays.has(dow)) reasons.push(`blockedDay(${dow})`);
+    if (isCurrentWeek && dateStr < todayDateStr) reasons.push(`pastDay(${dateStr}<${todayDateStr})`);
+    const keep = reasons.length === 0;
+    console.log(`[generate]   ${dateStr} (dow=${dow}): ${keep ? 'KEEP' : `SKIP [${reasons.join(', ')}]`}`);
+    return keep;
   });
 
   // Reorder: weekdays first (Mon-Fri), then weekend
@@ -374,7 +388,7 @@ export async function POST(req: Request) {
     return orderA - orderB;
   });
 
-  console.log(`[generate] schedulableDates after filtering: [${schedulableDates.join(', ')}]`);
+  console.log(`[generate] schedulableDates after sort: [${schedulableDates.map(d => `${d}(dow=${new Date(d + 'T12:00:00Z').getUTCDay()})`).join(', ')}]`);
 
   // Apply custom rule time overrides on top of preferences (clamp to valid range)
   let dayStart = earliestHour * 60;
@@ -406,9 +420,12 @@ export async function POST(req: Request) {
     locked: false;
   }[] = [];
 
+  console.log(`[generate] --- TASK PLACEMENT (${schedulableTasks.length} tasks, window=${dayStart}-${dayEnd}) ---`);
   for (const task of schedulableTasks) {
     let remaining = task.estimated_minutes - (lockedMinutesByTask.get(task.id) || 0);
     if (remaining <= 0) continue;
+
+    console.log(`[generate] TASK "${task.name}" (${task.id.slice(0,8)}): est=${task.estimated_minutes}min, locked=${lockedMinutesByTask.get(task.id) || 0}min, remaining=${remaining}min, priority=${taskPriority(task)}`);
 
     // Deadline-aware date ordering: prefer dates on/before the deadline
     const dlDate = deadlineDateInWeek(task);
@@ -417,6 +434,7 @@ export async function POST(req: Request) {
       const beforeOrOn = schedulableDates.filter(d => d <= dlDate);
       const after = schedulableDates.filter(d => d > dlDate);
       taskDateOrder = [...beforeOrOn, ...after];
+      console.log(`[generate]   deadline ${dlDate} in week → reordered dates: [${taskDateOrder.join(', ')}]`);
     }
 
     for (const dateStr of taskDateOrder) {
@@ -426,8 +444,13 @@ export async function POST(req: Request) {
       const effectiveDayStart = (isCurrentWeek && dateStr === todayDateStr)
         ? Math.max(dayStart, Math.ceil(currentTimeMinutes / 15) * 15)
         : dayStart;
+
+      // Log occupied intervals BEFORE finding gaps
+      const mergedOccupied = occupied.length > 0 ? mergeIntervals([...occupied]) : [];
+      console.log(`[generate]   ${dateStr}: effectiveDayStart=${effectiveDayStart}, occupied(${occupied.length} raw, ${mergedOccupied.length} merged)=[${mergedOccupied.map(i => `${Math.floor(i.start/60)}:${String(i.start%60).padStart(2,'0')}-${Math.floor(i.end/60)}:${String(i.end%60).padStart(2,'0')}`).join(', ')}]`);
+
       let gaps = findGaps(occupied, effectiveDayStart, dayEnd, minBlockMinutes);
-      console.log(`[generate] task "${task.name}" ${dateStr}: ${gaps.length} gaps found (occupied: ${occupied.length} intervals, window: ${effectiveDayStart}-${dayEnd})`);
+      console.log(`[generate]   ${dateStr}: ${gaps.length} gaps=[${gaps.map(g => `${Math.floor(g.start/60)}:${String(g.start%60).padStart(2,'0')}-${Math.floor(g.end/60)}:${String(g.end%60).padStart(2,'0')}(${g.end-g.start}min)`).join(', ')}]`);
 
       // Apply morning/evening preference for gap ordering
       if (!preferMornings && preferEvenings) {
@@ -440,16 +463,20 @@ export async function POST(req: Request) {
         const placed = Math.min(remaining, gapDuration);
 
         if (placed < minBlockMinutes && remaining >= minBlockMinutes) {
+          console.log(`[generate]   SKIP gap ${Math.floor(gap.start/60)}:${String(gap.start%60).padStart(2,'0')}-${Math.floor(gap.end/60)}:${String(gap.end%60).padStart(2,'0')} (${gapDuration}min < minBlock=${minBlockMinutes}min, remaining=${remaining}min)`);
           continue; // skip gaps too small unless we have less remaining
         }
 
         const slotStart = gap.start;
         const slotEnd = slotStart + placed;
+        const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
+
+        console.log(`[generate]   >>> PLACE on ${dateStr}(dow=${dow}): ${Math.floor(slotStart/60)}:${String(slotStart%60).padStart(2,'0')}-${Math.floor(slotEnd/60)}:${String(slotEnd%60).padStart(2,'0')} (${placed}min, remaining after: ${remaining - placed}min)`);
 
         newSlots.push({
           user_id: userId,
           task_id: task.id,
-          day_of_week: new Date(dateStr + 'T12:00:00Z').getUTCDay(),
+          day_of_week: dow,
           scheduled_date: dateStr,
           start_hour: Math.floor(slotStart / 60),
           start_minute: slotStart % 60,
@@ -464,7 +491,34 @@ export async function POST(req: Request) {
           ? Math.min(slotEnd + parsedRules.gapMinutes, dayEnd)
           : slotEnd;
         occupiedPerDate.get(dateStr)!.push({ start: slotStart, end: occupiedEnd });
+        console.log(`[generate]   added occupied [${slotStart}-${occupiedEnd}] to ${dateStr}, total intervals now: ${occupiedPerDate.get(dateStr)!.length}`);
         remaining -= placed;
+      }
+    }
+    console.log(`[generate]   DONE "${task.name}": remaining=${remaining}min`);
+  }
+
+  // Summary of all slots to be inserted
+  console.log(`[generate] --- SLOT SUMMARY (${newSlots.length} slots) ---`);
+  const slotsByDate = new Map<string, typeof newSlots>();
+  for (const s of newSlots) {
+    if (!slotsByDate.has(s.scheduled_date)) slotsByDate.set(s.scheduled_date, []);
+    slotsByDate.get(s.scheduled_date)!.push(s);
+  }
+  for (const [date, slots] of [...slotsByDate.entries()].sort()) {
+    console.log(`[generate]   ${date} (dow=${slots[0].day_of_week}): ${slots.length} slots`);
+    for (const s of slots) {
+      console.log(`[generate]     ${s.start_hour}:${String(s.start_minute).padStart(2,'0')}-${s.end_hour}:${String(s.end_minute).padStart(2,'0')} task=${s.task_id.slice(0,8)}`);
+    }
+  }
+  // Check for overlaps within each date
+  for (const [date, slots] of slotsByDate) {
+    const sorted = [...slots].sort((a, b) => (a.start_hour * 60 + a.start_minute) - (b.start_hour * 60 + b.start_minute));
+    for (let i = 1; i < sorted.length; i++) {
+      const prevEnd = sorted[i-1].end_hour * 60 + sorted[i-1].end_minute;
+      const currStart = sorted[i].start_hour * 60 + sorted[i].start_minute;
+      if (currStart < prevEnd) {
+        console.error(`[generate]   !!! OVERLAP on ${date}: slot ${i-1} ends at ${sorted[i-1].end_hour}:${String(sorted[i-1].end_minute).padStart(2,'0')} but slot ${i} starts at ${sorted[i].start_hour}:${String(sorted[i].start_minute).padStart(2,'0')}`);
       }
     }
   }
@@ -473,6 +527,7 @@ export async function POST(req: Request) {
   if (newSlots.length > 0) {
     const { error } = await supabase.from('scheduled_slots').insert(newSlots);
     if (error) {
+      console.error(`[generate] INSERT ERROR:`, error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
   }

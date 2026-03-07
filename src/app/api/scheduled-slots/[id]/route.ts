@@ -23,6 +23,18 @@ export async function PATCH(
   if (body.endMinute !== undefined) update.end_minute = body.endMinute;
   if (body.locked !== undefined) update.locked = body.locked;
   if (body.taskId !== undefined) update.task_id = body.taskId;
+  if (body.scheduledDate !== undefined) update.scheduled_date = body.scheduledDate;
+
+  // When dayOfWeek changes, derive scheduled_date from week_of + new dayOfWeek
+  if (body.dayOfWeek !== undefined && body.scheduledDate === undefined) {
+    const { data: slot } = await supabase
+      .from('scheduled_slots').select('week_of').eq('id', id).single();
+    if (slot) {
+      const base = new Date(slot.week_of + 'T12:00:00Z');
+      base.setUTCDate(base.getUTCDate() + body.dayOfWeek);
+      update.scheduled_date = base.toISOString().split('T')[0];
+    }
+  }
 
   // Auto-lock when position changes
   if (body.dayOfWeek !== undefined || body.startHour !== undefined || body.startMinute !== undefined) {

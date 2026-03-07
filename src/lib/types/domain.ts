@@ -79,6 +79,7 @@ export interface ScheduledSlot {
   endHour: number;
   endMinute: number;
   weekOf: string; // ISO date of the Sunday of the week
+  scheduledDate: string; // "YYYY-MM-DD" — authoritative date for this slot
   locked: boolean;
   createdAt: string;
   updatedAt: string;

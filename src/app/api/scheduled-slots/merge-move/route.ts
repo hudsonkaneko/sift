@@ -22,6 +22,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
+  // Derive scheduled_date from weekOf + targetDay
+  const baseDate = new Date(weekOf + 'T12:00:00Z');
+  baseDate.setUTCDate(baseDate.getUTCDate() + targetDay);
+  const scheduledDate = baseDate.toISOString().split('T')[0];
+
   const supabase = createServiceClient();
 
   // 1. Find the dragged slot to get taskId
@@ -64,6 +69,7 @@ export async function POST(req: Request) {
       .from('scheduled_slots')
       .update({
         day_of_week: targetDay,
+        scheduled_date: scheduledDate,
         start_hour: Math.floor(dropStart / 60),
         start_minute: dropStart % 60,
         end_hour: Math.floor(clampedEnd / 60),
@@ -142,6 +148,7 @@ export async function POST(req: Request) {
     .from('scheduled_slots')
     .update({
       day_of_week: targetDay,
+      scheduled_date: scheduledDate,
       start_hour: Math.floor(dropStart / 60),
       start_minute: dropStart % 60,
       end_hour: Math.floor(primaryEnd / 60),
@@ -191,6 +198,7 @@ export async function POST(req: Request) {
               user_id: userId,
               task_id: taskId,
               day_of_week: targetDay,
+              scheduled_date: scheduledDate,
               start_hour: Math.floor(cursor / 60),
               start_minute: cursor % 60,
               end_hour: Math.floor((cursor + placed) / 60),
@@ -218,6 +226,7 @@ export async function POST(req: Request) {
             user_id: userId,
             task_id: taskId,
             day_of_week: targetDay,
+            scheduled_date: scheduledDate,
             start_hour: Math.floor(cursor / 60),
             start_minute: cursor % 60,
             end_hour: Math.floor((cursor + placed) / 60),

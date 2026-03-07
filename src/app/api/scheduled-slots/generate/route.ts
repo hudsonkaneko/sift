@@ -34,8 +34,6 @@ function parseCustomRules(rules: string[]): ParsedRules {
 
     // Gap/buffer: very permissive — if the rule mentions gap/buffer/break/between/space
     // AND contains a number followed by "min", extract the number.
-    // Catches: "10 minute gaps", "10-minute buffer", "leave a 10 min gap",
-    // "gaps of 10 minutes", "Keep 10 minutes between tasks", etc.
     const gapKeywords = /gap|buffer|break|between|padding|space|spacing/;
     if (gapKeywords.test(lower)) {
       const numMatch = lower.match(/(\d+)[\s-]*min/);
@@ -44,8 +42,7 @@ function parseCustomRules(rules: string[]): ParsedRules {
       }
     }
 
-    // Time restrictions: "no scheduling before 10am", "don't schedule after 8pm",
-    // "start no earlier than 9am", "nothing before 10"
+    // Time restrictions: "no scheduling before 10am", "don't schedule after 8pm"
     const beforeMatch = lower.match(/before\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
     if (beforeMatch && /(?:no|don'?t|never|avoid|nothing|earliest|start)/.test(lower)) {
       let hour = parseInt(beforeMatch[1]);
@@ -120,12 +117,14 @@ function findGaps(occupied: Interval[], dayStart: number, dayEnd: number, minBlo
 /**
  * POST /api/scheduled-slots/generate
  *
- * Auto-generates a schedule for the current week:
+ * Auto-generates a schedule for the given week:
  * 1. Fetches incomplete tasks, existing locked slots, fixed blocks, preferences
- * 2. Deletes unlocked slots for this week
- * 3. Builds occupied intervals per day
+ * 2. Deletes unlocked slots for schedulable dates
+ * 3. Builds occupied intervals per date (keyed by "YYYY-MM-DD" strings)
  * 4. Sorts tasks by priority (deadline proximity + urgency)
  * 5. Greedily places tasks into available gaps
+ *
+ * Key change: uses actual calendar dates (scheduled_date) instead of abstract day numbers.
  */
 export async function POST(req: Request) {
   const [userId, errorResponse] = await requireAuth();
@@ -139,10 +138,18 @@ export async function POST(req: Request) {
   console.log(`[generate] === START === weekOf=${weekOf}, timezone=${timezone}`);
 
   const supabase = createServiceClient();
-  const weekEndStr = (() => { const d = new Date(weekOf + 'T00:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().split('T')[0]; })();
+
+  // Generate the 7 date strings for this week (Sun through Sat)
+  const weekDates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekOf + 'T12:00:00Z'); // noon UTC avoids DST edge
+    d.setUTCDate(d.getUTCDate() + i);
+    weekDates.push(d.toISOString().split('T')[0]);
+  }
+  const weekEndStr = weekDates[6];
   console.log(`[generate] date range: ${weekOf} to ${weekEndStr}`);
 
-  // Compute today's day-of-week BEFORE deleting, so we only delete today+future
+  // Compute today's local date string using timezone-aware formatting
   const tz = timezone || 'UTC';
   const now = new Date();
   const localParts = new Intl.DateTimeFormat('en-US', {
@@ -156,38 +163,36 @@ export async function POST(req: Request) {
   const localYear = parseInt(localParts.find(p => p.type === 'year')!.value);
   const localMonth = parseInt(localParts.find(p => p.type === 'month')!.value);
   const localDay = parseInt(localParts.find(p => p.type === 'day')!.value);
-  const todayMidnight = new Date(localYear, localMonth - 1, localDay);
+  const todayDateStr = `${localYear}-${String(localMonth).padStart(2, '0')}-${String(localDay).padStart(2, '0')}`;
   const currentTimeMinutes = localHour * 60 + localMinute;
-  const todayDayOfWeek = todayMidnight.getDay();
 
-  // Determine if this is the current week
-  const weekOfDate = new Date(weekOf + 'T00:00:00');
-  const weekOfSunday = new Date(weekOfDate);
-  weekOfSunday.setDate(weekOfSunday.getDate() - weekOfSunday.getDay());
-  const todaySunday = new Date(todayMidnight);
-  todaySunday.setDate(todaySunday.getDate() - todaySunday.getDay());
-  const isCurrentWeek = weekOfSunday.getTime() === todaySunday.getTime();
-  console.log(`[generate] isCurrentWeek=${isCurrentWeek}, todayDayOfWeek=${todayDayOfWeek}`);
+  // Determine if this is the current week (today falls within the week's date range)
+  const isCurrentWeek = todayDateStr >= weekDates[0] && todayDateStr <= weekDates[6];
+  console.log(`[generate] isCurrentWeek=${isCurrentWeek}, todayDateStr=${todayDateStr}`);
 
   // Step 1: Delete unlocked slots that will be regenerated
   // For current week: only delete today+future days (preserve past days' schedule)
   // For other weeks: delete all unlocked slots
   if (isCurrentWeek) {
     await supabase.from('scheduled_slots').delete()
-      .eq('user_id', userId).eq('week_of', weekOf).eq('locked', false)
-      .gte('day_of_week', todayDayOfWeek);
+      .eq('user_id', userId).eq('locked', false)
+      .gte('scheduled_date', todayDateStr)
+      .lte('scheduled_date', weekEndStr);
   } else {
     await supabase.from('scheduled_slots').delete()
-      .eq('user_id', userId).eq('week_of', weekOf).eq('locked', false);
+      .eq('user_id', userId).eq('locked', false)
+      .gte('scheduled_date', weekDates[0])
+      .lte('scheduled_date', weekEndStr);
   }
 
   // Step 2: Fetch data we need (after delete to avoid race with concurrent gen)
   const [tasksResult, completedTaskIdsResult, lockedSlotsResult, blocksResult, prefsResult, excludedSourcesResult] = await Promise.all([
     supabase.from('tasks').select('*').eq('user_id', userId).eq('completed', false),
     supabase.from('tasks').select('id').eq('user_id', userId).eq('completed', true),
-    supabase.from('scheduled_slots').select('*').eq('user_id', userId).eq('week_of', weekOf).eq('locked', true),
+    supabase.from('scheduled_slots').select('*').eq('user_id', userId)
+      .gte('scheduled_date', weekDates[0]).lte('scheduled_date', weekEndStr).eq('locked', true),
     supabase.from('fixed_blocks').select('*').eq('user_id', userId)
-      .or(`specific_date.is.null,and(specific_date.gte.${weekOf},specific_date.lte.${weekEndStr})`),
+      .or(`specific_date.is.null,and(specific_date.gte.${weekDates[0]},specific_date.lte.${weekEndStr})`),
     supabase.from('scheduling_preferences').select('*').eq('user_id', userId).single(),
     supabase.from('google_calendar_sources').select('google_calendar_id').eq('user_id', userId).eq('affects_scheduling', false),
   ]);
@@ -269,6 +274,7 @@ export async function POST(req: Request) {
 
   // Tiered priority: deadline proximity dominates (tiers 200+ apart),
   // urgency (0-100) only differentiates within the same deadline tier.
+  const todayMidnight = new Date(todayDateStr + 'T00:00:00');
   function taskPriority(t: { deadline: string | null; urgency: number; estimated_minutes: number }): number {
     let score = t.urgency ?? 0;
     if (t.deadline) {
@@ -284,86 +290,91 @@ export async function POST(req: Request) {
     return score;
   }
 
-  // For deadline-aware day placement: compute the day-of-week the deadline falls on
-  // within this week (or null if deadline is outside this week or absent)
-  function deadlineDayInWeek(t: { deadline: string | null }): number | null {
+  // For deadline-aware day placement: find the date string of the deadline
+  // if it falls within this week (or null if outside this week or absent)
+  function deadlineDateInWeek(t: { deadline: string | null }): string | null {
     if (!t.deadline) return null;
-    const deadlineDate = new Date(t.deadline + 'T00:00:00');
-    const weekStart = new Date(weekOf + 'T00:00:00');
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    if (deadlineDate < weekStart || deadlineDate > weekEnd) return null;
-    return deadlineDate.getDay();
+    if (t.deadline >= weekDates[0] && t.deadline <= weekDates[6]) {
+      return t.deadline;
+    }
+    return null;
   }
 
   schedulableTasks.sort((a, b) => taskPriority(b) - taskPriority(a));
 
-  // Build occupied intervals per day (0-6)
-  const occupiedPerDay: Map<number, Interval[]> = new Map();
-  for (let d = 0; d < 7; d++) occupiedPerDay.set(d, []);
+  // Build occupied intervals per date (keyed by "YYYY-MM-DD" strings)
+  const occupiedPerDate: Map<string, Interval[]> = new Map();
+  for (const dateStr of weekDates) {
+    occupiedPerDate.set(dateStr, []);
+  }
 
   // Add fixed blocks (calendar events + user-created blocks)
   // Google Calendar blocks get a 10-minute buffer on each side for travel/transition time
   const GCAL_BUFFER_MINUTES = 10;
   for (const fb of fixedBlocks) {
-    const day = fb.day_of_week;
-    if (day == null || day < 0 || day > 6) {
-      console.warn(`[generate] skipping fixed block with invalid day_of_week:`, fb.id, day);
-      continue;
-    }
-    const intervals = occupiedPerDay.get(day)!;
     const blockStart = fb.start_hour * 60 + fb.start_minute;
     const blockEnd = fb.end_hour * 60 + fb.end_minute;
-    if (fb.google_event_id) {
-      // Pad Google Calendar events with buffer for travel time
-      intervals.push({
-        start: Math.max(0, blockStart - GCAL_BUFFER_MINUTES),
-        end: Math.min(24 * 60, blockEnd + GCAL_BUFFER_MINUTES),
-      });
+    const interval: Interval = fb.google_event_id
+      ? { start: Math.max(0, blockStart - GCAL_BUFFER_MINUTES), end: Math.min(24 * 60, blockEnd + GCAL_BUFFER_MINUTES) }
+      : { start: blockStart, end: blockEnd };
+
+    if (fb.specific_date) {
+      // Date-specific blocks go into their specific date
+      const dateIntervals = occupiedPerDate.get(fb.specific_date);
+      if (dateIntervals) {
+        dateIntervals.push(interval);
+      }
     } else {
-      intervals.push({ start: blockStart, end: blockEnd });
+      // Recurring blocks go into all 7 dates matching their day_of_week
+      for (const dateStr of weekDates) {
+        const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
+        if (dow === fb.day_of_week) {
+          occupiedPerDate.get(dateStr)!.push({ ...interval });
+        }
+      }
     }
   }
 
-  // Add locked slots
+  // Add locked slots by their scheduled_date
   for (const slot of lockedSlots) {
-    const day = slot.day_of_week;
-    if (day == null || day < 0 || day > 6) continue;
-    const intervals = occupiedPerDay.get(day)!;
-    intervals.push({
-      start: slot.start_hour * 60 + slot.start_minute,
-      end: slot.end_hour * 60 + slot.end_minute,
-    });
-  }
-
-  // Debug: log occupied intervals per day
-  for (let d = 0; d < 7; d++) {
-    const intervals = occupiedPerDay.get(d)!;
-    if (intervals.length > 0) {
-      console.log(`[generate] day ${d} occupied: ${intervals.map(i => `${Math.floor(i.start/60)}:${String(i.start%60).padStart(2,'0')}-${Math.floor(i.end/60)}:${String(i.end%60).padStart(2,'0')}`).join(', ')}`);
+    const dateStr = slot.scheduled_date;
+    const dateIntervals = occupiedPerDate.get(dateStr);
+    if (dateIntervals) {
+      dateIntervals.push({
+        start: slot.start_hour * 60 + slot.start_minute,
+        end: slot.end_hour * 60 + slot.end_minute,
+      });
     }
   }
 
-  // Determine day order based on preferences, skipping past days for current week
-  let dayOrder: number[];
-  if (avoidWeekends) {
-    dayOrder = [1, 2, 3, 4, 5]; // Mon-Fri
-  } else {
-    dayOrder = [1, 2, 3, 4, 5, 6, 0]; // Weekdays first, then weekend
+  // Debug: log occupied intervals per date
+  for (const dateStr of weekDates) {
+    const intervals = occupiedPerDate.get(dateStr)!;
+    if (intervals.length > 0) {
+      console.log(`[generate] ${dateStr} occupied: ${intervals.map(i => `${Math.floor(i.start/60)}:${String(i.start%60).padStart(2,'0')}-${Math.floor(i.end/60)}:${String(i.end%60).padStart(2,'0')}`).join(', ')}`);
+    }
   }
 
-  // Remove days blocked by custom rules
-  if (parsedRules.blockedDays.size > 0) {
-    dayOrder = dayOrder.filter(d => !parsedRules.blockedDays.has(d));
-  }
+  // Filter to schedulable dates
+  let schedulableDates = weekDates.filter(dateStr => {
+    const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
+    if (avoidWeekends && (dow === 0 || dow === 6)) return false;
+    if (parsedRules.blockedDays.has(dow)) return false;
+    if (isCurrentWeek && dateStr < todayDateStr) return false;
+    return true;
+  });
 
-  // Only schedule on today and future days if generating for the current week
-  if (isCurrentWeek) {
-    // Sunday (0) is the FIRST day of the week (same day as weekOf),
-    // so simple numeric comparison works: any day < today is in the past
-    dayOrder = dayOrder.filter(d => d >= todayDayOfWeek);
-  }
-  console.log(`[generate] dayOrder after filtering: [${dayOrder.join(', ')}]`);
+  // Reorder: weekdays first (Mon-Fri), then weekend
+  schedulableDates.sort((a, b) => {
+    const dowA = new Date(a + 'T12:00:00Z').getUTCDay();
+    const dowB = new Date(b + 'T12:00:00Z').getUTCDay();
+    // Map: Sun(0)→7, Mon(1)→1, ..., Sat(6)→6  — puts Sunday last
+    const orderA = dowA === 0 ? 7 : dowA;
+    const orderB = dowB === 0 ? 7 : dowB;
+    return orderA - orderB;
+  });
+
+  console.log(`[generate] schedulableDates after filtering: [${schedulableDates.join(', ')}]`);
 
   // Apply custom rule time overrides on top of preferences (clamp to valid range)
   let dayStart = earliestHour * 60;
@@ -386,6 +397,7 @@ export async function POST(req: Request) {
     user_id: string;
     task_id: string;
     day_of_week: number;
+    scheduled_date: string;
     start_hour: number;
     start_minute: number;
     end_hour: number;
@@ -398,26 +410,24 @@ export async function POST(req: Request) {
     let remaining = task.estimated_minutes - (lockedMinutesByTask.get(task.id) || 0);
     if (remaining <= 0) continue;
 
-    // Deadline-aware day ordering: prefer days on/before the deadline
-    const dlDay = deadlineDayInWeek(task);
-    let taskDayOrder = dayOrder;
-    if (dlDay !== null) {
-      // Put days up to the deadline first, then days after
-      // (day_of_week 0=Sun is start of week, consistent with weekOf)
-      const beforeOrOn = dayOrder.filter(d => d <= dlDay);
-      const after = dayOrder.filter(d => d > dlDay);
-      taskDayOrder = [...beforeOrOn, ...after];
+    // Deadline-aware date ordering: prefer dates on/before the deadline
+    const dlDate = deadlineDateInWeek(task);
+    let taskDateOrder = schedulableDates;
+    if (dlDate !== null) {
+      const beforeOrOn = schedulableDates.filter(d => d <= dlDate);
+      const after = schedulableDates.filter(d => d > dlDate);
+      taskDateOrder = [...beforeOrOn, ...after];
     }
 
-    for (const day of taskDayOrder) {
+    for (const dateStr of taskDateOrder) {
       if (remaining <= 0) break;
 
-      const occupied = occupiedPerDay.get(day) || [];
-      const effectiveDayStart = (isCurrentWeek && day === todayDayOfWeek)
+      const occupied = occupiedPerDate.get(dateStr) || [];
+      const effectiveDayStart = (isCurrentWeek && dateStr === todayDateStr)
         ? Math.max(dayStart, Math.ceil(currentTimeMinutes / 15) * 15)
         : dayStart;
       let gaps = findGaps(occupied, effectiveDayStart, dayEnd, minBlockMinutes);
-      console.log(`[generate] task "${task.name}" day ${day}: ${gaps.length} gaps found (occupied: ${occupied.length} intervals, window: ${effectiveDayStart}-${dayEnd})`);
+      console.log(`[generate] task "${task.name}" ${dateStr}: ${gaps.length} gaps found (occupied: ${occupied.length} intervals, window: ${effectiveDayStart}-${dayEnd})`);
 
       // Apply morning/evening preference for gap ordering
       if (!preferMornings && preferEvenings) {
@@ -439,7 +449,8 @@ export async function POST(req: Request) {
         newSlots.push({
           user_id: userId,
           task_id: task.id,
-          day_of_week: day,
+          day_of_week: new Date(dateStr + 'T12:00:00Z').getUTCDay(),
+          scheduled_date: dateStr,
           start_hour: Math.floor(slotStart / 60),
           start_minute: slotStart % 60,
           end_hour: Math.floor(slotEnd / 60),
@@ -452,7 +463,7 @@ export async function POST(req: Request) {
         const occupiedEnd = parsedRules.gapMinutes > 0
           ? Math.min(slotEnd + parsedRules.gapMinutes, dayEnd)
           : slotEnd;
-        occupiedPerDay.get(day)!.push({ start: slotStart, end: occupiedEnd });
+        occupiedPerDate.get(dateStr)!.push({ start: slotStart, end: occupiedEnd });
         remaining -= placed;
       }
     }
@@ -467,11 +478,11 @@ export async function POST(req: Request) {
   }
 
   // Log final occupied state for debugging overlaps
-  for (let d = 0; d < 7; d++) {
-    const intervals = occupiedPerDay.get(d)!;
+  for (const dateStr of weekDates) {
+    const intervals = occupiedPerDate.get(dateStr)!;
     if (intervals.length > 0) {
       const merged = mergeIntervals([...intervals]);
-      console.log(`[generate] day ${d} final occupied (${merged.length} merged): ${merged.map(i => `${Math.floor(i.start/60)}:${String(i.start%60).padStart(2,'0')}-${Math.floor(i.end/60)}:${String(i.end%60).padStart(2,'0')}`).join(', ')}`);
+      console.log(`[generate] ${dateStr} final occupied (${merged.length} merged): ${merged.map(i => `${Math.floor(i.start/60)}:${String(i.start%60).padStart(2,'0')}-${Math.floor(i.end/60)}:${String(i.end%60).padStart(2,'0')}`).join(', ')}`);
     }
   }
 
@@ -482,17 +493,20 @@ export async function POST(req: Request) {
       weekOf,
       weekEndStr,
       isCurrentWeek,
-      todayDayOfWeek,
+      todayDateStr,
       fixedBlocksTotal: allBlocks.length,
       fixedBlocksUsed: fixedBlocks.length,
-      fixedBlocksByDay: Object.fromEntries(
-        Array.from({ length: 7 }, (_, d) => [d, fixedBlocks.filter((fb: { day_of_week: number }) => fb.day_of_week === d).length])
+      fixedBlocksByDate: Object.fromEntries(
+        weekDates.map(dateStr => [dateStr, fixedBlocks.filter((fb: { specific_date: string | null; day_of_week: number }) => {
+          if (fb.specific_date) return fb.specific_date === dateStr;
+          return new Date(dateStr + 'T12:00:00Z').getUTCDay() === fb.day_of_week;
+        }).length])
       ),
       excludedCalendars: excludedCalendarIds.size,
       lockedSlots: lockedSlots.length,
       completedSlotsRemoved: completedSlotIds.length,
       schedulableTasks: schedulableTasks.length,
-      dayOrder,
+      schedulableDates,
       dayStart,
       dayEnd,
       parsedRules: {

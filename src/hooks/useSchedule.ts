@@ -40,6 +40,12 @@ function mapSlotWithTask(row: any): ScheduledSlotWithTask {
   };
 }
 
+function getDateForDayOfWeek(weekOf: string, dayOfWeek: number): string {
+  const d = new Date(weekOf + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + dayOfWeek);
+  return d.toISOString().split('T')[0];
+}
+
 const slotsFetcher = async (url: string) => {
   const rows = await apiFetch<unknown[]>(url);
   return rows.map(mapSlotWithTask);
@@ -80,6 +86,12 @@ export function useSchedule() {
       taskId?: string;
     },
   ) => {
+    // When dayOfWeek changes, also send scheduledDate so the server has it
+    const patchBody: Record<string, unknown> = { ...updates };
+    if (updates.dayOfWeek !== undefined) {
+      patchBody.scheduledDate = getDateForDayOfWeek(weekOf, updates.dayOfWeek);
+    }
+
     // Optimistic update: immediately move the slot in the UI
     const optimisticSlots = (slots || []).map(s => {
       if (s.id !== id) return s;
@@ -91,6 +103,7 @@ export function useSchedule() {
         ...(updates.endHour !== undefined && { endHour: updates.endHour }),
         ...(updates.endMinute !== undefined && { endMinute: updates.endMinute }),
         ...(updates.locked !== undefined && { locked: updates.locked }),
+        ...(updates.dayOfWeek !== undefined && { scheduledDate: getDateForDayOfWeek(weekOf, updates.dayOfWeek) }),
         // Auto-lock when position changes (matches server behavior)
         ...((updates.dayOfWeek !== undefined || updates.startHour !== undefined || updates.startMinute !== undefined) && { locked: true }),
       };
@@ -100,9 +113,9 @@ export function useSchedule() {
     // Fire API call in background, then revalidate
     apiFetch(`/api/scheduled-slots/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify(updates),
+      body: JSON.stringify(patchBody),
     }).then(() => mutateSlots());
-  }, [slots, mutateSlots]);
+  }, [slots, weekOf, mutateSlots]);
 
   const deleteSlot = useCallback(async (id: string) => {
     // Optimistic delete: remove slot from calendar instantly

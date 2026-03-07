@@ -98,6 +98,7 @@ export function mapScheduledSlot(row: any): ScheduledSlot {
     endHour: row.end_hour,
     endMinute: row.end_minute,
     weekOf: row.week_of,
+    scheduledDate: row.scheduled_date,
     locked: row.locked,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

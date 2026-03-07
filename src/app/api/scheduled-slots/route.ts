@@ -13,13 +13,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'weekOf query parameter required' }, { status: 400 });
   }
 
+  // Compute date range from weekOf (Sunday through Saturday)
+  const startDate = weekOf;
+  const endDate = (() => {
+    const d = new Date(weekOf + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 6);
+    return d.toISOString().split('T')[0];
+  })();
+
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('scheduled_slots')
     .select('*, tasks(*)')
     .eq('user_id', userId)
-    .eq('week_of', weekOf)
-    .order('day_of_week', { ascending: true })
+    .gte('scheduled_date', startDate)
+    .lte('scheduled_date', endDate)
+    .order('scheduled_date', { ascending: true })
     .order('start_hour', { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

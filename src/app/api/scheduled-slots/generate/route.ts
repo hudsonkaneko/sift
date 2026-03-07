@@ -375,7 +375,7 @@ export async function POST(req: Request) {
   let schedulableDates = weekDates.filter(dateStr => {
     const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
     const reasons: string[] = [];
-    if (avoidWeekends && (dow === 0 || dow === 6)) reasons.push('weekend');
+    if (avoidWeekends && (dow === 0 || dow === 6) && dateStr !== todayDateStr) reasons.push('weekend');
     if (parsedRules.blockedDays.has(dow)) reasons.push(`blockedDay(${dow})`);
     if (dateStr < todayDateStr) reasons.push(`pastDay(${dateStr}<${todayDateStr})`);
     const keep = reasons.length === 0;

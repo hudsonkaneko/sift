@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import useSWR from 'swr';
 import { apiFetch } from '@/lib/utils/api';
 import { mapScheduledSlot } from '@/lib/utils/db';
@@ -54,6 +54,7 @@ const slotsFetcher = async (url: string) => {
 export function useSchedule() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [generating, setGenerating] = useState(false);
+  const generatingRef = useRef(false);
 
   const weekOf = useMemo(() => {
     const now = new Date();
@@ -153,7 +154,8 @@ export function useSchedule() {
   }, [slots, weekOf, mutateSlots]);
 
   const generateSchedule = useCallback(async () => {
-    if (generating) return; // prevent concurrent generation
+    if (generatingRef.current) return; // prevent concurrent generation
+    generatingRef.current = true;
     setGenerating(true);
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     console.log(`[useSchedule] generateSchedule: weekOf="${weekOf}", timezone="${tz}", weekOffset=${weekOffset}, now=${new Date().toISOString()}`);
@@ -172,9 +174,10 @@ export function useSchedule() {
       }
       await mutateSlots();
     } finally {
+      generatingRef.current = false;
       setGenerating(false);
     }
-  }, [weekOf, weekOffset, generating, mutateSlots]);
+  }, [weekOf, weekOffset, mutateSlots]);
 
   const isCurrentWeek = useMemo(() => {
     return weekOf === getSunday(new Date());
@@ -185,6 +188,7 @@ export function useSchedule() {
     slots: slots || [],
     isCurrentWeek,
     generating,
+    setGenerating,
     navigateWeek,
     goToToday,
     updateSlot,

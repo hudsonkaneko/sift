@@ -234,7 +234,7 @@ export async function POST(req: Request) {
   const minBlockMinutes = prefs?.min_block_minutes ?? 30;
   const preferMornings = prefs?.prefer_mornings ?? true;
   const preferEvenings = prefs?.prefer_evenings ?? true;
-  const avoidWeekends = false; // FORCED OFF for debugging
+  const avoidWeekends = prefs?.avoid_weekends ?? false;
   const customRules = prefs?.custom_rules ?? [];
 
   const parsedRules = parseCustomRules(customRules);
@@ -256,13 +256,18 @@ export async function POST(req: Request) {
     },
   };
 
-  // Cross-week scheduled minutes
+  // Cross-week scheduled minutes: only count LOCKED slots as committed.
+  // Unlocked slots are auto-generated and will be regenerated, so they
+  // should not prevent a task from being scheduled in the current week.
   const scheduledMinutesByTask = new Map<string, number>();
   for (const slot of (allTaskSlots || [])) {
     if (completedTaskIds.has(slot.task_id)) continue;
+    if (!slot.locked) continue; // only locked slots are committed
     const slotDate = slot.scheduled_date;
     const isInCurrentWeek = slotDate >= weekDates[0] && slotDate <= weekDates[6];
-    if (isInCurrentWeek && !slot.locked) continue;
+    // Current week locked slots were already counted (not deleted above)
+    // Other week locked slots represent user-pinned commitments
+    if (isInCurrentWeek) continue; // current week locked slots are handled as occupied intervals
     const duration = (slot.end_hour * 60 + slot.end_minute) - (slot.start_hour * 60 + slot.start_minute);
     scheduledMinutesByTask.set(slot.task_id, (scheduledMinutesByTask.get(slot.task_id) || 0) + duration);
   }

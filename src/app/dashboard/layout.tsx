@@ -193,15 +193,22 @@ export default function DashboardLayout({
   // Wrap generateSchedule to sync GCal first (avoids race condition where
   // tasks land on top of calendar events not yet synced)
   const handleGenerateSchedule = useCallback(async () => {
+    console.time('[generate] total');
     if (gcal.hasAccounts) {
       try {
+        console.time('[generate] gcal-sync');
         await gcal.sync(weekOf);
-        await mutateBlocks();
+        console.timeEnd('[generate] gcal-sync');
+        // Don't await — generate route reads blocks from DB directly
+        mutateBlocks();
       } catch (e) {
         console.warn('[dashboard] gcal sync failed, proceeding with cached blocks:', e);
       }
     }
+    console.time('[generate] schedule-api');
     await generateSchedule();
+    console.timeEnd('[generate] schedule-api');
+    console.timeEnd('[generate] total');
   }, [gcal.hasAccounts, gcal.sync, weekOf, mutateBlocks, generateSchedule]);
 
   // Filter fixed blocks by visibility state

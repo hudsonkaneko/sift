@@ -158,11 +158,18 @@ export function useSchedule() {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     console.log(`[useSchedule] generateSchedule: weekOf="${weekOf}", timezone="${tz}", weekOffset=${weekOffset}, now=${new Date().toISOString()}`);
     try {
-      const result = await apiFetch('/api/scheduled-slots/generate', {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result: any = await apiFetch('/api/scheduled-slots/generate', {
         method: 'POST',
         body: JSON.stringify({ weekOf, timezone: tz }),
       });
       console.log(`[useSchedule] generateSchedule result:`, result);
+      if (result?.debug) {
+        const d = result.debug;
+        console.log(`[generate-debug] isCurrentWeek=${d.isCurrentWeek}, todayDateStr="${d.todayDateStr}", weekOf="${d.weekOf}"`);
+        console.log(`[generate-debug] schedulableDates=[${d.schedulableDates?.join(', ')}]`);
+        console.log(`[generate-debug] slotsCreated=${result.slotsCreated}, tasksScheduled=${result.tasksScheduled}`);
+      }
       await mutateSlots();
     } finally {
       setGenerating(false);

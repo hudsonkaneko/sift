@@ -383,8 +383,13 @@ export async function POST(req: Request) {
     return keep;
   });
 
-  // Reorder: weekdays first (Mon-Fri), then weekend
+  // Reorder: today first (current week), then weekdays Mon-Fri, then weekend
   schedulableDates.sort((a, b) => {
+    // Today always comes first
+    if (isCurrentWeek) {
+      if (a === todayDateStr && b !== todayDateStr) return -1;
+      if (b === todayDateStr && a !== todayDateStr) return 1;
+    }
     const dowA = new Date(a + 'T12:00:00Z').getUTCDay();
     const dowB = new Date(b + 'T12:00:00Z').getUTCDay();
     // Map: Sun(0)→7, Mon(1)→1, ..., Sat(6)→6  — puts Sunday last

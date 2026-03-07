@@ -267,6 +267,43 @@ export async function POST(req: Request) {
     scheduledMinutesByTask.set(slot.task_id, (scheduledMinutesByTask.get(slot.task_id) || 0) + duration);
   }
 
+  // Debug: show ALL incomplete tasks and why each is included/excluded
+  debug.allIncompleteTasks = tasks.map(t => {
+    const alreadyScheduled = scheduledMinutesByTask.get(t.id) || 0;
+    let filterReason = null;
+    if (t.estimated_minutes <= 0) filterReason = 'estimated_minutes=0 (parent shell)';
+    else if (t.estimated_minutes <= alreadyScheduled) filterReason = `fully scheduled (${alreadyScheduled}/${t.estimated_minutes}min in other weeks)`;
+    return {
+      name: t.name,
+      id: t.id.slice(0, 8),
+      estimatedMinutes: t.estimated_minutes,
+      alreadyScheduledInOtherWeeks: alreadyScheduled,
+      parentId: t.parent_id ? t.parent_id.slice(0, 8) : null,
+      schedulable: !filterReason,
+      filterReason,
+    };
+  });
+
+  // Debug: show cross-week slots that are eating up task time
+  const crossWeekSlots = (allTaskSlots || []).filter(s => {
+    const slotDate = s.scheduled_date;
+    const isInCurrentWeek = slotDate >= weekDates[0] && slotDate <= weekDates[6];
+    return !isInCurrentWeek && !completedTaskIds.has(s.task_id);
+  });
+  debug.crossWeekSlots = {
+    count: crossWeekSlots.length,
+    byWeek: Object.fromEntries(
+      [...new Set(crossWeekSlots.map(s => s.scheduled_date))].sort().map(date => [
+        date,
+        crossWeekSlots.filter(s => s.scheduled_date === date).map(s => ({
+          taskId: s.task_id.slice(0, 8),
+          time: `${fmtMin(s.start_hour * 60 + s.start_minute)}-${fmtMin(s.end_hour * 60 + s.end_minute)}`,
+          locked: s.locked,
+        })),
+      ])
+    ),
+  };
+
   const schedulableTasks = tasks.filter(t => {
     if (t.estimated_minutes <= 0) return false;
     const locked = scheduledMinutesByTask.get(t.id) || 0;

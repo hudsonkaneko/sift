@@ -377,7 +377,7 @@ export async function POST(req: Request) {
     const reasons: string[] = [];
     if (avoidWeekends && (dow === 0 || dow === 6)) reasons.push('weekend');
     if (parsedRules.blockedDays.has(dow)) reasons.push(`blockedDay(${dow})`);
-    if (isCurrentWeek && dateStr < todayDateStr) reasons.push(`pastDay(${dateStr}<${todayDateStr})`);
+    if (dateStr < todayDateStr) reasons.push(`pastDay(${dateStr}<${todayDateStr})`);
     const keep = reasons.length === 0;
     console.log(`[generate]   ${dateStr} (dow=${dow}): ${keep ? 'KEEP' : `SKIP [${reasons.join(', ')}]`}`);
     return keep;
@@ -385,11 +385,9 @@ export async function POST(req: Request) {
 
   // Reorder: today first (current week), then weekdays Mon-Fri, then weekend
   schedulableDates.sort((a, b) => {
-    // Today always comes first
-    if (isCurrentWeek) {
-      if (a === todayDateStr && b !== todayDateStr) return -1;
-      if (b === todayDateStr && a !== todayDateStr) return 1;
-    }
+    // Today always comes first (safe for future weeks — todayDateStr won't be in the list)
+    if (a === todayDateStr && b !== todayDateStr) return -1;
+    if (b === todayDateStr && a !== todayDateStr) return 1;
     const dowA = new Date(a + 'T12:00:00Z').getUTCDay();
     const dowB = new Date(b + 'T12:00:00Z').getUTCDay();
     // Map: Sun(0)→7, Mon(1)→1, ..., Sat(6)→6  — puts Sunday last
@@ -458,7 +456,7 @@ export async function POST(req: Request) {
       if (remaining <= 0) break;
 
       const occupied = occupiedPerDate.get(dateStr) || [];
-      const effectiveDayStart = (isCurrentWeek && dateStr === todayDateStr)
+      const effectiveDayStart = (dateStr === todayDateStr)
         ? Math.max(dayStart, Math.ceil(currentTimeMinutes / 15) * 15)
         : dayStart;
 

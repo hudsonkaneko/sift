@@ -174,26 +174,17 @@ export async function POST(req: Request) {
   const isCurrentWeek = todayDateStr >= weekDates[0] && todayDateStr <= weekDates[6];
   console.log(`[generate] isCurrentWeek=${isCurrentWeek} (${todayDateStr} >= ${weekDates[0]} && ${todayDateStr} <= ${weekDates[6]})`);
 
-  // Step 1: Delete unlocked slots that will be regenerated
-  // For current week: only delete today+future days (preserve past days' schedule)
-  // For other weeks: delete all unlocked slots
-  if (isCurrentWeek) {
-    console.log(`[generate] DELETE unlocked slots where scheduled_date >= "${todayDateStr}" AND <= "${weekEndStr}"`);
-    const delResult = await supabase.from('scheduled_slots').delete()
-      .eq('user_id', userId).eq('locked', false)
-      .gte('scheduled_date', todayDateStr)
-      .lte('scheduled_date', weekEndStr)
-      .select('id, scheduled_date, day_of_week');
-    console.log(`[generate] deleted ${delResult.data?.length ?? 0} unlocked slots:`, delResult.data?.map((s: { id: string; scheduled_date: string; day_of_week: number }) => `${s.scheduled_date}(dow=${s.day_of_week})`));
-  } else {
-    console.log(`[generate] DELETE unlocked slots where scheduled_date >= "${weekDates[0]}" AND <= "${weekEndStr}"`);
-    const delResult = await supabase.from('scheduled_slots').delete()
-      .eq('user_id', userId).eq('locked', false)
-      .gte('scheduled_date', weekDates[0])
-      .lte('scheduled_date', weekEndStr)
-      .select('id, scheduled_date, day_of_week');
-    console.log(`[generate] deleted ${delResult.data?.length ?? 0} unlocked slots:`, delResult.data?.map((s: { id: string; scheduled_date: string; day_of_week: number }) => `${s.scheduled_date}(dow=${s.day_of_week})`));
-  }
+  // Step 1: Delete ALL unlocked slots for this week (entire week range).
+  // We always clear the full week because past-day stale slots from buggy
+  // previous generations need to be cleaned up too. Only locked (user-pinned)
+  // slots survive.
+  console.log(`[generate] DELETE unlocked slots where scheduled_date >= "${weekDates[0]}" AND <= "${weekEndStr}"`);
+  const delResult = await supabase.from('scheduled_slots').delete()
+    .eq('user_id', userId).eq('locked', false)
+    .gte('scheduled_date', weekDates[0])
+    .lte('scheduled_date', weekEndStr)
+    .select('id, scheduled_date, day_of_week');
+  console.log(`[generate] deleted ${delResult.data?.length ?? 0} unlocked slots:`, delResult.data?.map((s: { id: string; scheduled_date: string; day_of_week: number }) => `${s.scheduled_date}(dow=${s.day_of_week})`));
 
   // Step 2: Fetch data we need (after delete to avoid race with concurrent gen)
   const [tasksResult, completedTaskIdsResult, lockedSlotsResult, blocksResult, prefsResult, excludedSourcesResult] = await Promise.all([
@@ -391,19 +382,26 @@ export async function POST(req: Request) {
   console.log(`[generate] schedulableDates after sort: [${schedulableDates.map(d => `${d}(dow=${new Date(d + 'T12:00:00Z').getUTCDay()})`).join(', ')}]`);
 
   // Apply custom rule time overrides on top of preferences (clamp to valid range)
+  // Handle latestHour < earliestHour (e.g. 9am-3am means schedule until 3am = 27:00)
   let dayStart = earliestHour * 60;
+  let dayEnd = latestHour < earliestHour
+    ? latestHour * 60 + 24 * 60  // wrap past midnight: 3am → 1620 (27*60)
+    : latestHour * 60;
+  // Cap at 24:00 (1440) since our slot model uses 0-23 hours
+  dayEnd = Math.min(dayEnd, 24 * 60);
+  console.log(`[generate] time window: earliestHour=${earliestHour}, latestHour=${latestHour}, dayStart=${dayStart}, dayEnd=${dayEnd}`);
+
   if (parsedRules.noScheduleBefore && parsedRules.noScheduleBefore > 0 && parsedRules.noScheduleBefore < 24 * 60) {
     dayStart = Math.max(dayStart, parsedRules.noScheduleBefore);
   }
-  let dayEnd = latestHour * 60;
   if (parsedRules.noScheduleAfter && parsedRules.noScheduleAfter > 0 && parsedRules.noScheduleAfter < 24 * 60) {
     dayEnd = Math.min(dayEnd, parsedRules.noScheduleAfter);
   }
-  // Ensure dayStart < dayEnd
+  // Ensure dayStart < dayEnd — fallback to safe hardcoded defaults
   if (dayStart >= dayEnd) {
-    console.warn(`[generate] dayStart (${dayStart}) >= dayEnd (${dayEnd}), resetting to preference defaults`);
-    dayStart = earliestHour * 60;
-    dayEnd = latestHour * 60;
+    console.warn(`[generate] dayStart (${dayStart}) >= dayEnd (${dayEnd}), resetting to hardcoded 9:00-23:00`);
+    dayStart = 9 * 60;
+    dayEnd = 23 * 60;
   }
 
   // Greedily place tasks into gaps

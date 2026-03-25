@@ -56,10 +56,9 @@ export function useSchedule() {
 
   const {
     data: slots,
+    error: slotsError,
     mutate: mutateSlots,
-  } = useSWR(`/api/scheduled-slots?weekOf=${weekOf}`, slotsFetcher, {
-    keepPreviousData: true,
-  });
+  } = useSWR(`/api/scheduled-slots?weekOf=${weekOf}`, slotsFetcher);
 
   const navigateWeek = useCallback((delta: number) => {
     setWeekOffset(prev => prev + delta);
@@ -175,6 +174,7 @@ export function useSchedule() {
   return {
     weekOf,
     slots: slots || [],
+    error: slotsError,
     isCurrentWeek,
     generating,
     setGenerating,

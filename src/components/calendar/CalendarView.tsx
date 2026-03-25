@@ -71,7 +71,7 @@ export default function CalendarView({
   onGenerateSchedule,
   generatingSchedule,
 }: Props) {
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date | null>(null);
   const [eventForm, setEventForm] = useState<EventFormState | null>(null);
   const [blockMenu, setBlockMenu] = useState<BlockMenuState | null>(null);
   const [swapMenu, setSwapMenu] = useState<SwapMenuState | null>(null);
@@ -85,8 +85,9 @@ export default function CalendarView({
     }
   }, []);
 
-  // Update current time every 30 seconds
+  // Initialize and update current time on client only (avoids hydration mismatch)
   useEffect(() => {
+    setNow(new Date());
     const interval = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(interval);
   }, []);
@@ -100,7 +101,9 @@ export default function CalendarView({
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  const todayDateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const todayDateStr = now
+    ? `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+    : '';
   const weekDates = getWeekDates(weekOf);
 
   // ─── Drag system ───
@@ -319,7 +322,7 @@ export default function CalendarView({
       <div className="flex-1 overflow-y-auto" ref={scrollRef}>
         <div className="flex" style={{ minHeight: gridHeight }}>
           <TimeColumn
-            now={now}
+            now={now ?? new Date(0)}
             isToday={weekDates.includes(todayDateStr)}
           />
 
@@ -347,6 +350,7 @@ export default function CalendarView({
                 onSlotContextMenu={handleSlotContextMenu}
                 onBlockContextMenu={handleBlockContextMenu}
                 columnRef={el => { columnRefs.current[dayIndex] = el; }}
+                now={now ?? new Date(0)}
               />
             );
           })}

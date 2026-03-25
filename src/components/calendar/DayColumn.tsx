@@ -27,6 +27,7 @@ interface Props {
   onSlotContextMenu: (e: React.MouseEvent, slot: ScheduledSlotWithTask) => void;
   onBlockContextMenu: (e: React.MouseEvent, block: FixedBlock) => void;
   columnRef: (el: HTMLDivElement | null) => void;
+  now: Date;
 }
 
 const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
@@ -45,9 +46,8 @@ export default function DayColumn({
   onSlotContextMenu,
   onBlockContextMenu,
   columnRef,
+  now,
 }: Props) {
-  // Current time indicator — only on today's actual date, not same-DOW in other weeks
-  const now = new Date();
 
   // Overlap layout
   const overlapMap = useMemo(

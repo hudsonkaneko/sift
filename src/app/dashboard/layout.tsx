@@ -24,11 +24,12 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [showSettings, setShowSettings] = useState(false);
-  const { tasks, toggleComplete, updateTask, deleteTask, addSubtask, deleteAllTasks, mutate: mutateTasks } = useTasks();
-  const { preferences, updatePreferences } = usePreferences();
+  const { tasks, error: tasksError, toggleComplete, updateTask, deleteTask, addSubtask, deleteAllTasks, mutate: mutateTasks } = useTasks();
+  const { preferences, error: prefsError, updatePreferences } = usePreferences();
   const {
     weekOf,
     slots,
+    error: slotsError,
     isCurrentWeek,
     generating,
     setGenerating,
@@ -40,7 +41,7 @@ export default function DashboardLayout({
     generateSchedule,
     mutateSlots,
   } = useSchedule();
-  const { fixedBlocks, addFixedBlock, updateFixedBlock, deleteFixedBlock, mutate: mutateBlocks } = useFixedBlocks(weekOf);
+  const { fixedBlocks, error: blocksError, addFixedBlock, updateFixedBlock, deleteFixedBlock, mutate: mutateBlocks } = useFixedBlocks(weekOf);
   const gcal = useGoogleCalendar();
   const { sources, visibility, toggleFixedBlocks, toggleGoogleCalendar, toggleScheduling, isGoogleCalendarVisible, mutateSources } = useCalendarSources(gcal.hasAccounts);
   const {
@@ -60,6 +61,8 @@ export default function DashboardLayout({
     enterProjectScope,
     exitProjectScope,
   } = useChat();
+
+  const fetchError = tasksError || prefsError || slotsError || blocksError;
 
   // Pull-up toast state
   interface PullUpToastData {
@@ -285,6 +288,11 @@ export default function DashboardLayout({
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col min-w-0 bg-bg-secondary relative">
+          {fetchError && (
+            <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-400 text-xs text-center">
+              Failed to load data. Retrying...
+            </div>
+          )}
           {/* Calendar + right sidebar row */}
           <div className="flex-1 min-h-0 flex">
             <div className="flex-1 min-w-0">

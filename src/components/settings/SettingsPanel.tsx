@@ -11,6 +11,8 @@ interface Props {
   gcal?: {
     accounts: GoogleCalendarAccount[];
     syncing: boolean;
+    connectionError: boolean;
+    onDismissError: () => void;
     onSync: () => void;
     onDisconnect: (googleEmail: string) => void;
   };
@@ -150,6 +152,12 @@ export default function SettingsPanel({ preferences, onUpdate, onClose, gcal }: 
                   >
                     {gcal.syncing ? 'Syncing...' : 'Sync Now'}
                   </button>
+                )}
+                {gcal.connectionError && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                    <span>Google Calendar connection failed. Check that the OAuth redirect URI is registered in Google Cloud Console.</span>
+                    <button onClick={gcal.onDismissError} className="ml-auto text-red-400/60 hover:text-red-400 flex-shrink-0">&times;</button>
+                  </div>
                 )}
                 <a
                   href="/api/google-calendar/auth"

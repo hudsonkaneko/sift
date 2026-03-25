@@ -48,12 +48,25 @@
    - Signing key: Your Supabase JWT Secret (from Supabase Settings → API → JWT Settings)
    - Claims: `{ "sub": "{{user.id}}" }`
 
-## 3. Anthropic Setup
+## 3. Google Calendar Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials
+2. **Create OAuth 2.0 Client ID** (Web application type)
+3. **Add Authorized redirect URI**: `https://YOUR-DOMAIN/api/google-calendar/callback`
+   - For local dev: `http://localhost:3000/api/google-calendar/callback`
+   - For Vercel: `https://your-app.vercel.app/api/google-calendar/callback`
+4. **Enable the Google Calendar API**: APIs & Services → Library → search "Google Calendar API" → Enable
+5. Copy Client ID → `GOOGLE_CLIENT_ID`
+6. Copy Client Secret → `GOOGLE_CLIENT_SECRET`
+
+> **Important**: The redirect URI must match EXACTLY (including protocol and trailing path). If you use a custom domain, add that as a redirect URI too.
+
+## 4. Anthropic Setup
 
 1. Get API key from [console.anthropic.com](https://console.anthropic.com)
 2. Set `ANTHROPIC_API_KEY` in your environment
 
-## 4. Vercel Deployment
+## 5. Vercel Deployment
 
 1. **Push to GitHub:**
    ```bash
@@ -77,6 +90,8 @@
    NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
    SUPABASE_SERVICE_ROLE_KEY=eyJ...
+   GOOGLE_CLIENT_ID=...
+   GOOGLE_CLIENT_SECRET=...
    ANTHROPIC_API_KEY=sk-ant-...
    ```
 
@@ -84,7 +99,7 @@
 
 5. **Update Clerk webhook URL** to your production domain
 
-## 5. Local Development
+## 6. Local Development
 
 ```bash
 # Copy env template
@@ -109,4 +124,6 @@ npm run dev
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Dashboard → Settings → API | Yes |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Dashboard → Settings → API | Yes |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase Dashboard → Settings → API | No |
+| `GOOGLE_CLIENT_ID` | Google Cloud Console → Credentials | No |
+| `GOOGLE_CLIENT_SECRET` | Google Cloud Console → Credentials | No |
 | `ANTHROPIC_API_KEY` | Anthropic Console → API Keys | No |

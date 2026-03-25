@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/utils/auth';
 import { createServiceClient } from '@/lib/supabase/server';
+import { getSundayForDate } from '@/lib/utils/date';
 
 interface Interval {
   start: number; // minutes from midnight
@@ -121,23 +122,11 @@ export async function POST(req: Request) {
   if (!userId) return errorResponse!;
 
   const { weekOf, timezone } = await req.json();
-  if (!weekOf) {
-    return NextResponse.json({ error: 'weekOf is required' }, { status: 400 });
-  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const debug: Record<string, any> = {};
 
   const supabase = createServiceClient();
-
-  // Generate the 7 date strings for this week (Sun through Sat)
-  const weekDates: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(weekOf + 'T12:00:00Z');
-    d.setUTCDate(d.getUTCDate() + i);
-    weekDates.push(d.toISOString().split('T')[0]);
-  }
-  const weekEndStr = weekDates[6];
 
   // Compute today's local date string using timezone-aware formatting
   const tz = timezone || 'UTC';
@@ -157,37 +146,43 @@ export async function POST(req: Request) {
   const currentTimeMinutes = localHour * 60 + localMinute;
   const todayDow = new Date(todayDateStr + 'T12:00:00Z').getUTCDay();
 
-  const isCurrentWeek = todayDateStr >= weekDates[0] && todayDateStr <= weekDates[6];
+  // Generate 14-day scheduling range starting from today
+  const schedulingDates: string[] = [];
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(todayDateStr + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + i);
+    schedulingDates.push(d.toISOString().split('T')[0]);
+  }
+  const rangeStartStr = schedulingDates[0]; // today
+  const rangeEndStr = schedulingDates[schedulingDates.length - 1]; // today + 13 days
 
   debug.input = {
-    weekOf,
+    weekOf: weekOf || '(ignored for scheduling)',
     timezone: tz,
     serverTime: now.toISOString(),
-    weekDates: weekDates.map(d => `${d} (${DOW_LABELS[new Date(d + 'T12:00:00Z').getUTCDay()]})`),
+    schedulingRange: `${rangeStartStr} to ${rangeEndStr}`,
+    schedulingDates: schedulingDates.map(d => `${d} (${DOW_LABELS[new Date(d + 'T12:00:00Z').getUTCDay()]})`),
     todayDateStr,
     todayDow: `${todayDow} (${DOW_LABELS[todayDow]})`,
-    todayInWeek: weekDates.includes(todayDateStr),
     currentTimeMinutes: `${currentTimeMinutes} (${fmtMin(currentTimeMinutes)})`,
-    isCurrentWeek,
   };
 
-  // Step 1: Delete unlocked slots for this week
+  // Step 1: Delete ALL unlocked slots from today onward (no upper bound)
   const delResult = await supabase.from('scheduled_slots').delete()
     .eq('user_id', userId).eq('locked', false)
-    .gte('scheduled_date', weekDates[0])
-    .lte('scheduled_date', weekEndStr)
+    .gte('scheduled_date', rangeStartStr)
     .select('id, scheduled_date, day_of_week');
 
   debug.deletedSlots = delResult.data?.length ?? 0;
 
-  // Step 2: Fetch data
+  // Step 2: Fetch data (expanded range for fixed blocks and locked slots)
   const [tasksResult, completedTaskIdsResult, lockedSlotsResult, blocksResult, prefsResult, excludedSourcesResult] = await Promise.all([
     supabase.from('tasks').select('*').eq('user_id', userId).eq('completed', false),
     supabase.from('tasks').select('id').eq('user_id', userId).eq('completed', true),
     supabase.from('scheduled_slots').select('*').eq('user_id', userId)
-      .gte('scheduled_date', weekDates[0]).lte('scheduled_date', weekEndStr).eq('locked', true),
+      .gte('scheduled_date', rangeStartStr).lte('scheduled_date', rangeEndStr).eq('locked', true),
     supabase.from('fixed_blocks').select('*').eq('user_id', userId)
-      .or(`specific_date.is.null,and(specific_date.gte.${weekDates[0]},specific_date.lte.${weekEndStr})`),
+      .or(`specific_date.is.null,and(specific_date.gte.${rangeStartStr},specific_date.lte.${rangeEndStr})`),
     supabase.from('scheduling_preferences').select('*').eq('user_id', userId).single(),
     supabase.from('google_calendar_sources').select('google_calendar_id').eq('user_id', userId).eq('affects_scheduling', false),
   ]);
@@ -205,7 +200,7 @@ export async function POST(req: Request) {
   const lockedSlots = allLockedSlots.filter((s: { task_id: string }) => !completedTaskIds.has(s.task_id));
   const prefs = prefsResult.data;
 
-  // Cross-week deduction
+  // Fetch ALL user slots for cross-range deduction
   const { data: allTaskSlots } = await supabase
     .from('scheduled_slots')
     .select('task_id, start_hour, start_minute, end_hour, end_minute, scheduled_date, locked')
@@ -256,18 +251,15 @@ export async function POST(req: Request) {
     },
   };
 
-  // Cross-week scheduled minutes: only count LOCKED slots as committed.
-  // Unlocked slots are auto-generated and will be regenerated, so they
-  // should not prevent a task from being scheduled in the current week.
+  // Cross-range deduction: only count LOCKED slots OUTSIDE the scheduling range.
+  // In-range locked slots serve as occupied intervals — the greedy loop naturally avoids them.
   const scheduledMinutesByTask = new Map<string, number>();
   for (const slot of (allTaskSlots || [])) {
     if (completedTaskIds.has(slot.task_id)) continue;
     if (!slot.locked) continue; // only locked slots are committed
     const slotDate = slot.scheduled_date;
-    const isInCurrentWeek = slotDate >= weekDates[0] && slotDate <= weekDates[6];
-    // Current week locked slots were already counted (not deleted above)
-    // Other week locked slots represent user-pinned commitments
-    if (isInCurrentWeek) continue; // current week locked slots are handled as occupied intervals
+    const isInRange = slotDate >= rangeStartStr && slotDate <= rangeEndStr;
+    if (isInRange) continue; // in-range locked slots are handled as occupied intervals
     const duration = (slot.end_hour * 60 + slot.end_minute) - (slot.start_hour * 60 + slot.start_minute);
     scheduledMinutesByTask.set(slot.task_id, (scheduledMinutesByTask.get(slot.task_id) || 0) + duration);
   }
@@ -277,30 +269,30 @@ export async function POST(req: Request) {
     const alreadyScheduled = scheduledMinutesByTask.get(t.id) || 0;
     let filterReason = null;
     if (t.estimated_minutes <= 0) filterReason = 'estimated_minutes=0 (parent shell)';
-    else if (t.estimated_minutes <= alreadyScheduled) filterReason = `fully scheduled (${alreadyScheduled}/${t.estimated_minutes}min in other weeks)`;
+    else if (t.estimated_minutes <= alreadyScheduled) filterReason = `fully scheduled (${alreadyScheduled}/${t.estimated_minutes}min outside range)`;
     return {
       name: t.name,
       id: t.id.slice(0, 8),
       estimatedMinutes: t.estimated_minutes,
-      alreadyScheduledInOtherWeeks: alreadyScheduled,
+      alreadyScheduledOutsideRange: alreadyScheduled,
       parentId: t.parent_id ? t.parent_id.slice(0, 8) : null,
       schedulable: !filterReason,
       filterReason,
     };
   });
 
-  // Debug: show cross-week slots that are eating up task time
-  const crossWeekSlots = (allTaskSlots || []).filter(s => {
+  // Debug: show slots outside scheduling range that are deducting task time
+  const outsideRangeSlots = (allTaskSlots || []).filter(s => {
     const slotDate = s.scheduled_date;
-    const isInCurrentWeek = slotDate >= weekDates[0] && slotDate <= weekDates[6];
-    return !isInCurrentWeek && !completedTaskIds.has(s.task_id);
+    const isInRange = slotDate >= rangeStartStr && slotDate <= rangeEndStr;
+    return !isInRange && !completedTaskIds.has(s.task_id);
   });
-  debug.crossWeekSlots = {
-    count: crossWeekSlots.length,
-    byWeek: Object.fromEntries(
-      [...new Set(crossWeekSlots.map(s => s.scheduled_date))].sort().map(date => [
+  debug.outsideRangeSlots = {
+    count: outsideRangeSlots.length,
+    byDate: Object.fromEntries(
+      [...new Set(outsideRangeSlots.map(s => s.scheduled_date))].sort().map(date => [
         date,
-        crossWeekSlots.filter(s => s.scheduled_date === date).map(s => ({
+        outsideRangeSlots.filter(s => s.scheduled_date === date).map(s => ({
           taskId: s.task_id.slice(0, 8),
           time: `${fmtMin(s.start_hour * 60 + s.start_minute)}-${fmtMin(s.end_hour * 60 + s.end_minute)}`,
           locked: s.locked,
@@ -331,9 +323,9 @@ export async function POST(req: Request) {
     return score;
   }
 
-  function deadlineDateInWeek(t: { deadline: string | null }): string | null {
+  function deadlineDateInRange(t: { deadline: string | null }): string | null {
     if (!t.deadline) return null;
-    if (t.deadline >= weekDates[0] && t.deadline <= weekDates[6]) {
+    if (t.deadline >= rangeStartStr && t.deadline <= rangeEndStr) {
       return t.deadline;
     }
     return null;
@@ -352,9 +344,9 @@ export async function POST(req: Request) {
     priority: taskPriority(t),
   }));
 
-  // Build occupied intervals per date
+  // Build occupied intervals per date for all 14 scheduling dates
   const occupiedPerDate: Map<string, Interval[]> = new Map();
-  for (const dateStr of weekDates) {
+  for (const dateStr of schedulingDates) {
     occupiedPerDate.set(dateStr, []);
   }
 
@@ -372,7 +364,7 @@ export async function POST(req: Request) {
         dateIntervals.push(interval);
       }
     } else {
-      for (const dateStr of weekDates) {
+      for (const dateStr of schedulingDates) {
         const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
         if (dow === fb.day_of_week) {
           occupiedPerDate.get(dateStr)!.push({ ...interval });
@@ -392,14 +384,13 @@ export async function POST(req: Request) {
     }
   }
 
-  // Filter to schedulable dates
+  // Filter to schedulable dates (range already starts from today, no past check needed)
   const dateFilterLog: { date: string; dow: string; result: string; reasons: string[] }[] = [];
-  let schedulableDates = weekDates.filter(dateStr => {
+  const schedulableDates = schedulingDates.filter(dateStr => {
     const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
     const reasons: string[] = [];
     if (avoidWeekends && (dow === 0 || dow === 6) && dateStr !== todayDateStr) reasons.push('weekend');
     if (parsedRules.blockedDays.has(dow)) reasons.push(`blockedDay(${DOW_LABELS[dow]})`);
-    if (dateStr < todayDateStr) reasons.push('past');
     const keep = reasons.length === 0;
     dateFilterLog.push({
       date: dateStr,
@@ -412,15 +403,11 @@ export async function POST(req: Request) {
 
   debug.dateFiltering = dateFilterLog;
 
-  // Reorder: today first, then weekdays, then weekend
+  // Reorder: today first, then chronological
   schedulableDates.sort((a, b) => {
     if (a === todayDateStr && b !== todayDateStr) return -1;
     if (b === todayDateStr && a !== todayDateStr) return 1;
-    const dowA = new Date(a + 'T12:00:00Z').getUTCDay();
-    const dowB = new Date(b + 'T12:00:00Z').getUTCDay();
-    const orderA = dowA === 0 ? 7 : dowA;
-    const orderB = dowB === 0 ? 7 : dowB;
-    return orderA - orderB;
+    return a.localeCompare(b);
   });
 
   debug.schedulableDatesOrdered = schedulableDates.map(d => {
@@ -480,7 +467,7 @@ export async function POST(req: Request) {
       placements: [],
     };
 
-    const dlDate = deadlineDateInWeek(task);
+    const dlDate = deadlineDateInRange(task);
     let taskDateOrder = schedulableDates;
     if (dlDate !== null) {
       const beforeOrOn = schedulableDates.filter(d => d <= dlDate);
@@ -531,7 +518,7 @@ export async function POST(req: Request) {
           start_minute: slotStart % 60,
           end_hour: Math.floor(slotEnd / 60),
           end_minute: slotEnd % 60,
-          week_of: weekOf,
+          week_of: getSundayForDate(dateStr),
           locked: false,
         });
 

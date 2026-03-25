@@ -39,6 +39,7 @@ export function useFixedBlocks(weekOf?: string) {
   const fallbackData = readCache(weekOf);
   const { data: fixedBlocks, error, isLoading, mutate } = useSWR(key, fetcher, {
     fallbackData,
+    keepPreviousData: true,
   });
 
   // Persist fetched blocks to localStorage for instant render on next mount

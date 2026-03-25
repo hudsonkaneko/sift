@@ -4,18 +4,8 @@ import { useState, useCallback, useMemo, useRef } from 'react';
 import useSWR from 'swr';
 import { apiFetch } from '@/lib/utils/api';
 import { mapScheduledSlot } from '@/lib/utils/db';
+import { getSunday } from '@/lib/utils/date';
 import type { ScheduledSlotWithTask, Task } from '@/lib/types/domain';
-
-function getSunday(date: Date): string {
-  const d = new Date(date);
-  d.setDate(d.getDate() - d.getDay());
-  // Use local date parts — toISOString() would shift the date by 1 day
-  // for users in negative UTC offsets (e.g. PST after 4pm)
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapSlotWithTask(row: any): ScheduledSlotWithTask {
@@ -67,7 +57,9 @@ export function useSchedule() {
   const {
     data: slots,
     mutate: mutateSlots,
-  } = useSWR(`/api/scheduled-slots?weekOf=${weekOf}`, slotsFetcher);
+  } = useSWR(`/api/scheduled-slots?weekOf=${weekOf}`, slotsFetcher, {
+    keepPreviousData: true,
+  });
 
   const navigateWeek = useCallback((delta: number) => {
     setWeekOffset(prev => prev + delta);

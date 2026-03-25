@@ -16,6 +16,7 @@ import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useCalendarSources } from '@/hooks/useCalendarSources';
 import { SNAP_MINUTES, snapMinutes } from '@/components/calendar/constants';
 import { DEFAULT_PREFERENCES } from '@/lib/types/domain';
+import { getSunday } from '@/lib/utils/date';
 
 export default function DashboardLayout({
   children,
@@ -200,7 +201,13 @@ export default function DashboardLayout({
       if (gcal.hasAccounts) {
         try {
           console.time('[generate] gcal-sync');
-          await gcal.sync(weekOf);
+          // Sync both current and next week in parallel so the 14-day
+          // scheduling range has complete GCal data
+          const thisSunday = getSunday(new Date());
+          const nextWeek = new Date();
+          nextWeek.setDate(nextWeek.getDate() + 7);
+          const nextSunday = getSunday(nextWeek);
+          await Promise.all([gcal.sync(thisSunday), gcal.sync(nextSunday)]);
           console.timeEnd('[generate] gcal-sync');
           mutateBlocks();
         } catch (e) {
@@ -215,7 +222,7 @@ export default function DashboardLayout({
       setGenerating(false);
     }
     console.timeEnd('[generate] total');
-  }, [gcal.hasAccounts, gcal.sync, weekOf, mutateBlocks, generateSchedule, setGenerating]);
+  }, [gcal.hasAccounts, gcal.sync, mutateBlocks, generateSchedule, setGenerating]);
 
   // Filter fixed blocks by visibility state
   const filteredBlocks = useMemo(() => {
@@ -348,6 +355,8 @@ export default function DashboardLayout({
           gcal={{
             accounts: gcal.accounts,
             syncing: gcal.syncing,
+            connectionError: gcal.connectionError,
+            onDismissError: () => gcal.setConnectionError(false),
             onSync: async () => {
               await gcal.sync(weekOf);
               mutateBlocks();

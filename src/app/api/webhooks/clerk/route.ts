@@ -64,6 +64,7 @@ export async function POST(req: Request) {
   if (evt.type === 'user.deleted') {
     const { id } = evt.data;
     if (id) {
+      console.log(`[clerk-webhook] user.deleted received for user ${id} — cascading all data`);
       const { error } = await supabase.from('users').delete().eq('id', id);
       if (error) {
         console.error('Supabase delete error:', error);

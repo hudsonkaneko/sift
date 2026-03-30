@@ -20,14 +20,17 @@ export async function GET(req: Request) {
 
   if (weekOf) {
     // Return recurring blocks + date-specific blocks for this week (Sun-Sat)
-    const weekStart = new Date(weekOf + 'T00:00:00');
+    const weekStart = new Date(weekOf + 'T12:00:00Z');
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 6);
     const weekStartStr = weekStart.toISOString().split('T')[0];
     const weekEndStr = weekEnd.toISOString().split('T')[0];
 
+    console.log(`[fixed-blocks GET] weekOf=${weekOf}, range=${weekStartStr} to ${weekEndStr}`);
+
     query = query.or(`specific_date.is.null,and(specific_date.gte.${weekStartStr},specific_date.lte.${weekEndStr})`);
   } else {
+    console.log('[fixed-blocks GET] no weekOf — returning recurring only');
     // Backward compatible: only return blocks without a specific date
     query = query.is('specific_date', null);
   }
@@ -37,8 +40,13 @@ export async function GET(req: Request) {
     .order('start_hour', { ascending: true });
 
   if (error) {
+    console.error('[fixed-blocks GET] query error:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  const googleBlocks = (data || []).filter((b: { google_event_id: string | null }) => b.google_event_id);
+  const userBlocks = (data || []).filter((b: { user_created: boolean }) => b.user_created);
+  console.log(`[fixed-blocks GET] returning ${data?.length ?? 0} blocks (${googleBlocks.length} google, ${userBlocks.length} user-created)`);
 
   return NextResponse.json(data);
 }

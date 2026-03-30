@@ -230,6 +230,11 @@ export default function DashboardLayout({
   // Filter fixed blocks by visibility state
   const filteredBlocks = useMemo(() => {
     if (!fixedBlocks) return [];
+    const googleBlocks = fixedBlocks.filter(b => b.googleEventId);
+    if (googleBlocks.length > 0) {
+      console.log(`[dashboard] fixedBlocks pre-filter: ${fixedBlocks.length} total, ${googleBlocks.length} google events:`,
+        googleBlocks.map(b => ({ name: b.name, date: b.specificDate, calId: b.googleCalendarId?.slice(0, 20) })));
+    }
     const result = fixedBlocks.filter(block => {
       // User-created blocks: controlled by fixedBlocks toggle
       if (block.userCreated) {
@@ -237,15 +242,18 @@ export default function DashboardLayout({
       }
       // Google Calendar blocks: controlled by their calendar toggle
       if (block.googleCalendarId) {
-        return isGoogleCalendarVisible(block.googleCalendarId);
+        const visible = isGoogleCalendarVisible(block.googleCalendarId);
+        if (!visible) console.log(`[dashboard] HIDDEN by calendar toggle: "${block.name}" (calId=${block.googleCalendarId})`);
+        return visible;
       }
       // Legacy google blocks without calendar id: show if fixedBlocks visible
       if (block.googleEventId) {
+        if (!visibility.fixedBlocks) console.log(`[dashboard] HIDDEN by fixedBlocks toggle: "${block.name}" (legacy, no calendarId)`);
         return visibility.fixedBlocks;
       }
       return true;
     });
-    console.log(`[dashboard] filteredBlocks: ${result.length}/${fixedBlocks.length} blocks visible (google visible: ${result.filter(b => b.googleEventId).length})`);
+    console.log(`[dashboard] filteredBlocks: ${result.length}/${fixedBlocks.length} visible (${result.filter(b => b.googleEventId).length} google)`);
     return result;
   }, [fixedBlocks, visibility.fixedBlocks, isGoogleCalendarVisible]);
 

@@ -171,7 +171,9 @@ export default function DashboardLayout({
   }, [isCurrentWeek]);
 
   // Auto-sync Google Calendar on week change or initial connect (non-blocking)
+  // Also pre-fetches the next 4 weeks so scrolling ahead is instant
   const lastSyncKey = useRef<string | null>(null);
+  const prefetchedWeeks = useRef<Set<string>>(new Set());
   useEffect(() => {
     const key = `${weekOf}:${gcal.hasAccounts}:${gcal.accounts.length}`;
     if (gcal.hasAccounts && weekOf && lastSyncKey.current !== key) {
@@ -180,6 +182,20 @@ export default function DashboardLayout({
       gcal.sync(weekOf).then(() => {
         console.log('[dashboard] background sync done, refreshing blocks...');
         mutateBlocks();
+
+        // Pre-fetch next 4 weeks in the background
+        const baseDate = new Date(weekOf + 'T12:00:00Z');
+        for (let i = 1; i <= 4; i++) {
+          const future = new Date(baseDate);
+          future.setUTCDate(future.getUTCDate() + i * 7);
+          const futureWeek = getSunday(future);
+          if (!prefetchedWeeks.current.has(futureWeek)) {
+            prefetchedWeeks.current.add(futureWeek);
+            gcal.sync(futureWeek).then(() => {
+              console.log(`[dashboard] prefetched gcal week ${futureWeek}`);
+            }).catch(() => {});
+          }
+        }
       }).catch(e => {
         console.warn('[dashboard] background gcal sync failed:', e);
       });

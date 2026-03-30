@@ -15,8 +15,8 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className="antialiased"><Providers>{children}</Providers></body>
+      <html lang="en" suppressHydrationWarning>
+        <body className="antialiased" suppressHydrationWarning><Providers>{children}</Providers></body>
       </html>
     </ClerkProvider>
   );

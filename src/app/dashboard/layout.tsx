@@ -170,23 +170,21 @@ export default function DashboardLayout({
     if (!isCurrentWeek) setPullUpToast(null);
   }, [isCurrentWeek]);
 
-  // Auto-sync Google Calendar on week change or initial connect
+  // Auto-sync Google Calendar on week change or initial connect (non-blocking)
   const lastSyncKey = useRef<string | null>(null);
-  const syncGcal = useCallback(async () => {
+  useEffect(() => {
     const key = `${weekOf}:${gcal.hasAccounts}:${gcal.accounts.length}`;
-    console.log(`[dashboard] syncGcal check: key=${key}, lastKey=${lastSyncKey.current}, hasAccounts=${gcal.hasAccounts}, weekOf=${weekOf}`);
     if (gcal.hasAccounts && weekOf && lastSyncKey.current !== key) {
       lastSyncKey.current = key;
-      console.log('[dashboard] triggering auto-sync...');
-      await gcal.sync(weekOf);
-      console.log('[dashboard] auto-sync done, mutating blocks...');
-      mutateBlocks();
+      console.log('[dashboard] triggering background gcal sync...');
+      gcal.sync(weekOf).then(() => {
+        console.log('[dashboard] background sync done, refreshing blocks...');
+        mutateBlocks();
+      }).catch(e => {
+        console.warn('[dashboard] background gcal sync failed:', e);
+      });
     }
   }, [gcal.hasAccounts, gcal.accounts.length, weekOf, gcal.sync, mutateBlocks]);
-
-  useEffect(() => {
-    syncGcal();
-  }, [syncGcal]);
 
   // Fetch calendar sources when gcal connects
   useEffect(() => {

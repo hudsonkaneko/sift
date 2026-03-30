@@ -172,34 +172,45 @@ export default function DashboardLayout({
 
   // Auto-sync Google Calendar on week change or initial connect (non-blocking)
   // Also pre-fetches the next 4 weeks so scrolling ahead is instant
-  const lastSyncKey = useRef<string | null>(null);
-  const prefetchedWeeks = useRef<Set<string>>(new Set());
+  // Uses a Set to avoid re-syncing weeks that were already fetched this session
+  const syncedWeeks = useRef<Set<string>>(new Set());
+  const lastAccountKey = useRef<string | null>(null);
   useEffect(() => {
-    const key = `${weekOf}:${gcal.hasAccounts}:${gcal.accounts.length}`;
-    if (gcal.hasAccounts && weekOf && lastSyncKey.current !== key) {
-      lastSyncKey.current = key;
-      console.log('[dashboard] triggering background gcal sync...');
-      gcal.sync(weekOf).then(() => {
-        console.log('[dashboard] background sync done, refreshing blocks...');
-        mutateBlocks();
+    if (!gcal.hasAccounts || !weekOf) return;
 
-        // Pre-fetch next 4 weeks in the background
-        const baseDate = new Date(weekOf + 'T12:00:00Z');
-        for (let i = 1; i <= 4; i++) {
-          const future = new Date(baseDate);
-          future.setUTCDate(future.getUTCDate() + i * 7);
-          const futureWeek = getSunday(future);
-          if (!prefetchedWeeks.current.has(futureWeek)) {
-            prefetchedWeeks.current.add(futureWeek);
-            gcal.sync(futureWeek).then(() => {
-              console.log(`[dashboard] prefetched gcal week ${futureWeek}`);
-            }).catch(() => {});
-          }
-        }
-      }).catch(e => {
-        console.warn('[dashboard] background gcal sync failed:', e);
-      });
+    // Reset synced weeks if accounts change (connect/disconnect)
+    const accountKey = `${gcal.hasAccounts}:${gcal.accounts.length}`;
+    if (lastAccountKey.current !== null && lastAccountKey.current !== accountKey) {
+      syncedWeeks.current.clear();
     }
+    lastAccountKey.current = accountKey;
+
+    // Skip if this week was already synced this session
+    if (syncedWeeks.current.has(weekOf)) return;
+    syncedWeeks.current.add(weekOf);
+
+    console.log(`[dashboard] background gcal sync: ${weekOf}`);
+    gcal.sync(weekOf).then(() => {
+      mutateBlocks();
+
+      // Pre-fetch next 4 weeks in the background
+      const baseDate = new Date(weekOf + 'T12:00:00Z');
+      for (let i = 1; i <= 4; i++) {
+        const future = new Date(baseDate);
+        future.setUTCDate(future.getUTCDate() + i * 7);
+        const futureWeek = getSunday(future);
+        if (!syncedWeeks.current.has(futureWeek)) {
+          syncedWeeks.current.add(futureWeek);
+          gcal.sync(futureWeek).then(() => {
+            console.log(`[dashboard] prefetched gcal week ${futureWeek}`);
+          }).catch(() => {});
+        }
+      }
+    }).catch(e => {
+      // Allow retry on next navigation
+      syncedWeeks.current.delete(weekOf);
+      console.warn('[dashboard] background gcal sync failed:', e);
+    });
   }, [gcal.hasAccounts, gcal.accounts.length, weekOf, gcal.sync, mutateBlocks]);
 
   // Fetch calendar sources when gcal connects

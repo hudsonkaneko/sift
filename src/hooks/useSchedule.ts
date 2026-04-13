@@ -5,7 +5,7 @@ import useSWR from 'swr';
 import { apiFetch } from '@/lib/utils/api';
 import { mapScheduledSlot } from '@/lib/utils/db';
 import { getSunday } from '@/lib/utils/date';
-import type { ScheduledSlotWithTask, Task } from '@/lib/types/domain';
+import type { ScheduledSlotWithTask, Task, ScheduleWarning, ScheduleSummary } from '@/lib/types/domain';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapSlotWithTask(row: any): ScheduledSlotWithTask {
@@ -45,6 +45,8 @@ export function useSchedule() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [generating, setGenerating] = useState(false);
   const generatingRef = useRef(false);
+  const [scheduleWarnings, setScheduleWarnings] = useState<ScheduleWarning[] | null>(null);
+  const [scheduleSummary, setScheduleSummary] = useState<ScheduleSummary | null>(null);
 
   const weekOf = useMemo(() => {
     const now = new Date();
@@ -160,6 +162,14 @@ export function useSchedule() {
         console.log('%c[GENERATE DEBUG] Copy the object below and paste to Claude:', 'font-weight:bold;color:#f59e0b;font-size:14px');
         console.log(JSON.stringify(result.debug, null, 2));
       }
+      if (result?.warnings?.length > 0) {
+        setScheduleWarnings(result.warnings);
+      } else {
+        setScheduleWarnings(null);
+      }
+      if (result?.summary) {
+        setScheduleSummary(result.summary);
+      }
       await mutateSlots();
     } finally {
       generatingRef.current = false;
@@ -170,6 +180,11 @@ export function useSchedule() {
   const isCurrentWeek = useMemo(() => {
     return weekOf === getSunday(new Date());
   }, [weekOf]);
+
+  const dismissWarnings = useCallback(() => {
+    setScheduleWarnings(null);
+    setScheduleSummary(null);
+  }, []);
 
   return {
     weekOf,
@@ -185,5 +200,8 @@ export function useSchedule() {
     mergeMove,
     generateSchedule,
     mutateSlots,
+    scheduleWarnings,
+    scheduleSummary,
+    dismissWarnings,
   };
 }

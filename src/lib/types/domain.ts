@@ -173,3 +173,21 @@ export interface WeekSchedule {
   fixedBlocks: FixedBlock[];
   scheduledSlots: ScheduledSlotWithTask[];
 }
+
+export type ScheduleWarningType = 'overloaded_day' | 'unscheduled_task' | 'deadline_conflict' | 'capacity_shortage';
+export type ScheduleWarningSeverity = 'info' | 'warning' | 'critical';
+
+export interface ScheduleWarning {
+  type: ScheduleWarningType;
+  severity: ScheduleWarningSeverity;
+  message: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ScheduleSummary {
+  totalTaskMinutes: number;
+  totalAvailableMinutes: number;
+  utilizationPercent: number;
+  unscheduledTasks: number;
+  deadlineConflicts: number;
+}

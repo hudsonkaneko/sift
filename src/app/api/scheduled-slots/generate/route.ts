@@ -438,7 +438,29 @@ export async function POST(req: Request) {
     dayEnd: `${dayEnd} (${fmtMin(dayEnd)})`,
   };
 
-  // Greedily place tasks into gaps
+  // Pre-compute available minutes per date for load balancing
+  const availableMinutesPerDate = new Map<string, number>();
+  const scheduledMinutesPerDate = new Map<string, number>();
+  for (const dateStr of schedulableDates) {
+    const effectiveStart = (dateStr === todayDateStr)
+      ? Math.max(dayStart, Math.ceil(currentTimeMinutes / 15) * 15)
+      : dayStart;
+    const baseAvailable = dayEnd - effectiveStart;
+    const occupied = mergeIntervals([...(occupiedPerDate.get(dateStr) || [])]);
+    let occupiedMinutes = 0;
+    for (const iv of occupied) {
+      const clampedStart = Math.max(iv.start, effectiveStart);
+      const clampedEnd = Math.min(iv.end, dayEnd);
+      if (clampedEnd > clampedStart) occupiedMinutes += clampedEnd - clampedStart;
+    }
+    availableMinutesPerDate.set(dateStr, Math.max(0, baseAvailable - occupiedMinutes));
+    scheduledMinutesPerDate.set(dateStr, 0);
+  }
+
+  // Track which dates each task already has slots on (for contiguity)
+  const taskDatesPlaced = new Map<string, Set<string>>();
+
+  // Greedily place tasks into gaps (with load balancing + contiguity)
   const newSlots: {
     user_id: string;
     task_id: string;
@@ -468,12 +490,31 @@ export async function POST(req: Request) {
     };
 
     const dlDate = deadlineDateInRange(task);
-    let taskDateOrder = schedulableDates;
+
+    // Load-balanced date ordering: sort by utilization ratio (least loaded first)
+    // Deadline tasks: before-deadline dates first, then after — each group sorted by load
+    const sortByLoad = (dates: string[]) => {
+      return [...dates].sort((a, b) => {
+        const availA = availableMinutesPerDate.get(a) || 1;
+        const availB = availableMinutesPerDate.get(b) || 1;
+        const loadA = (scheduledMinutesPerDate.get(a) || 0) / availA;
+        const loadB = (scheduledMinutesPerDate.get(b) || 0) / availB;
+        // Contiguity bonus: prefer dates where this task already has a slot
+        const placedDates = taskDatesPlaced.get(task.id);
+        const contiguityA = placedDates?.has(a) ? -0.15 : 0;
+        const contiguityB = placedDates?.has(b) ? -0.15 : 0;
+        return (loadA + contiguityA) - (loadB + contiguityB);
+      });
+    };
+
+    let taskDateOrder: string[];
     if (dlDate !== null) {
-      const beforeOrOn = schedulableDates.filter(d => d <= dlDate);
-      const after = schedulableDates.filter(d => d > dlDate);
+      const beforeOrOn = sortByLoad(schedulableDates.filter(d => d <= dlDate));
+      const after = sortByLoad(schedulableDates.filter(d => d > dlDate));
       taskDateOrder = [...beforeOrOn, ...after];
       taskLog.deadlineReorder = dlDate;
+    } else {
+      taskDateOrder = sortByLoad(schedulableDates);
     }
 
     for (const dateStr of taskDateOrder) {
@@ -486,8 +527,25 @@ export async function POST(req: Request) {
 
       const gaps = findGaps(occupied, effectiveDayStart, dayEnd, minBlockMinutes);
 
+      // Contiguity: sort gaps by size descending (prefer fewer, larger blocks)
+      gaps.sort((a, b) => (b.end - b.start) - (a.end - a.start));
+
+      // Then apply morning/evening preference as tiebreaker for similar-sized gaps
       if (!preferMornings && preferEvenings) {
-        gaps.reverse();
+        // Stable sort: within same-size gaps, prefer later times
+        gaps.sort((a, b) => {
+          const sizeA = a.end - a.start;
+          const sizeB = b.end - b.start;
+          if (Math.abs(sizeA - sizeB) <= minBlockMinutes) return b.start - a.start;
+          return sizeB - sizeA;
+        });
+      } else if (preferMornings && !preferEvenings) {
+        gaps.sort((a, b) => {
+          const sizeA = a.end - a.start;
+          const sizeB = b.end - b.start;
+          if (Math.abs(sizeA - sizeB) <= minBlockMinutes) return a.start - b.start;
+          return sizeB - sizeA;
+        });
       }
 
       for (const gap of gaps) {
@@ -526,6 +584,14 @@ export async function POST(req: Request) {
           ? Math.min(slotEnd + parsedRules.gapMinutes, dayEnd)
           : slotEnd;
         occupiedPerDate.get(dateStr)!.push({ start: slotStart, end: occupiedEnd });
+
+        // Update load tracking
+        scheduledMinutesPerDate.set(dateStr, (scheduledMinutesPerDate.get(dateStr) || 0) + placed);
+
+        // Update contiguity tracking
+        if (!taskDatesPlaced.has(task.id)) taskDatesPlaced.set(task.id, new Set());
+        taskDatesPlaced.get(task.id)!.add(dateStr);
+
         remaining -= placed;
       }
     }
@@ -556,6 +622,130 @@ export async function POST(req: Request) {
     fixedBlocks: fixedBlocks.length,
   };
 
+  // ─── Feasibility analysis: compute warnings ───
+  interface ScheduleWarning {
+    type: string;
+    severity: 'info' | 'warning' | 'critical';
+    message: string;
+    metadata: Record<string, unknown>;
+  }
+
+  const warnings: ScheduleWarning[] = [];
+
+  // Compute total available minutes across all schedulable dates
+  let totalAvailableMinutes = 0;
+  for (const dateStr of schedulableDates) {
+    const effectiveStart = (dateStr === todayDateStr)
+      ? Math.max(dayStart, Math.ceil(currentTimeMinutes / 15) * 15)
+      : dayStart;
+    const baseAvailable = dayEnd - effectiveStart;
+    // Subtract occupied time (fixed blocks + locked slots)
+    const occupied = mergeIntervals([...(occupiedPerDate.get(dateStr) || [])]);
+    let occupiedMinutes = 0;
+    for (const iv of occupied) {
+      const clampedStart = Math.max(iv.start, effectiveStart);
+      const clampedEnd = Math.min(iv.end, dayEnd);
+      if (clampedEnd > clampedStart) occupiedMinutes += clampedEnd - clampedStart;
+    }
+    totalAvailableMinutes += Math.max(0, baseAvailable - occupiedMinutes);
+  }
+
+  // Total task minutes needed
+  const totalTaskMinutes = schedulableTasks.reduce((sum, t) => {
+    const already = scheduledMinutesByTask.get(t.id) || 0;
+    return sum + Math.max(0, t.estimated_minutes - already);
+  }, 0);
+
+  const utilizationPercent = totalAvailableMinutes > 0
+    ? Math.round((totalTaskMinutes / totalAvailableMinutes) * 100)
+    : 0;
+
+  // Warning: capacity shortage
+  if (totalTaskMinutes > totalAvailableMinutes) {
+    const deficit = totalTaskMinutes - totalAvailableMinutes;
+    warnings.push({
+      type: 'capacity_shortage',
+      severity: 'critical',
+      message: `You need ${Math.round(totalTaskMinutes / 60)}h of work but only have ${Math.round(totalAvailableMinutes / 60)}h available (${Math.round(deficit / 60)}h short).`,
+      metadata: { totalTaskMinutes, totalAvailableMinutes, deficitMinutes: deficit },
+    });
+  }
+
+  // Warning: unscheduled tasks
+  let unscheduledCount = 0;
+  for (const entry of placementLog) {
+    if (entry.remainingAfter > 0) {
+      unscheduledCount++;
+      const task = schedulableTasks.find(t => t.id.startsWith(entry.id));
+      const hasDeadline = task?.deadline && task.deadline >= rangeStartStr && task.deadline <= rangeEndStr;
+      warnings.push({
+        type: 'unscheduled_task',
+        severity: hasDeadline ? 'critical' : 'warning',
+        message: `"${entry.task}" has ${entry.remainingAfter}min that couldn't be scheduled.`,
+        metadata: { taskName: entry.task, taskId: entry.id, unscheduledMinutes: entry.remainingAfter, hasDeadline: !!hasDeadline },
+      });
+    }
+  }
+
+  // Warning: deadline conflicts
+  let deadlineConflictCount = 0;
+  for (const task of schedulableTasks) {
+    const dlDate = deadlineDateInRange(task);
+    if (!dlDate) continue;
+    // Check if any newly created slot for this task falls after the deadline
+    const taskNewSlots = newSlots.filter(s => s.task_id === task.id);
+    const slotsAfterDeadline = taskNewSlots.filter(s => s.scheduled_date > dlDate);
+    if (slotsAfterDeadline.length > 0) {
+      deadlineConflictCount++;
+      warnings.push({
+        type: 'deadline_conflict',
+        severity: 'critical',
+        message: `"${task.name}" has work scheduled after its ${dlDate} deadline.`,
+        metadata: { taskName: task.name, taskId: task.id.slice(0, 8), deadline: dlDate, slotsAfterDeadline: slotsAfterDeadline.length },
+      });
+    }
+  }
+
+  // Warning: overloaded days (> 85% utilization)
+  for (const dateStr of schedulableDates) {
+    const effectiveStart = (dateStr === todayDateStr)
+      ? Math.max(dayStart, Math.ceil(currentTimeMinutes / 15) * 15)
+      : dayStart;
+    const baseAvailable = dayEnd - effectiveStart;
+    const occupied = mergeIntervals([...(occupiedPerDate.get(dateStr) || [])]);
+    let occupiedMinutes = 0;
+    for (const iv of occupied) {
+      const clampedStart = Math.max(iv.start, effectiveStart);
+      const clampedEnd = Math.min(iv.end, dayEnd);
+      if (clampedEnd > clampedStart) occupiedMinutes += clampedEnd - clampedStart;
+    }
+    const available = Math.max(0, baseAvailable - occupiedMinutes);
+    const scheduledOnDate = (slotsByDate.get(dateStr) || []).reduce((sum, s) => {
+      return sum + (s.end_hour * 60 + s.end_minute) - (s.start_hour * 60 + s.start_minute);
+    }, 0);
+    if (available > 0 && scheduledOnDate / available > 0.85) {
+      const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
+      warnings.push({
+        type: 'overloaded_day',
+        severity: 'warning',
+        message: `${DOW_LABELS[dow]} ${dateStr.slice(5)} is ${Math.round((scheduledOnDate / available) * 100)}% full.`,
+        metadata: { date: dateStr, scheduledMinutes: scheduledOnDate, availableMinutes: available },
+      });
+    }
+  }
+
+  // Sort warnings: critical first, then warning, then info
+  const severityOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+  warnings.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+  const summary = {
+    totalTaskMinutes,
+    totalAvailableMinutes,
+    utilizationPercent,
+    unscheduledTasks: unscheduledCount,
+    deadlineConflicts: deadlineConflictCount,
+  };
+
   // Batch insert new slots
   if (newSlots.length > 0) {
     const { error } = await supabase.from('scheduled_slots').insert(newSlots);
@@ -567,6 +757,8 @@ export async function POST(req: Request) {
   return NextResponse.json({
     slotsCreated: newSlots.length,
     tasksScheduled: new Set(newSlots.map(s => s.task_id)).size,
+    warnings,
+    summary,
     debug,
   });
 }

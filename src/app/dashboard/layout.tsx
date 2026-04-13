@@ -7,6 +7,7 @@ import CalendarView from '@/components/calendar/CalendarView';
 import CalendarSourcesSidebar from '@/components/calendar/CalendarSourcesSidebar';
 import SettingsPanel from '@/components/settings/SettingsPanel';
 import PullUpToast from '@/components/ui/PullUpToast';
+import ScheduleWarnings from '@/components/ui/ScheduleWarnings';
 import { useTasks } from '@/hooks/useTasks';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useFixedBlocks } from '@/hooks/useFixedBlocks';
@@ -40,6 +41,9 @@ export default function DashboardLayout({
     mergeMove,
     generateSchedule,
     mutateSlots,
+    scheduleWarnings,
+    scheduleSummary,
+    dismissWarnings,
   } = useSchedule();
   const { fixedBlocks, error: blocksError, addFixedBlock, updateFixedBlock, deleteFixedBlock, mutate: mutateBlocks } = useFixedBlocks(weekOf);
   const gcal = useGoogleCalendar();
@@ -372,8 +376,17 @@ export default function DashboardLayout({
             />
           </div>
 
-          {/* Pull-up toast */}
-          {pullUpToast && (
+          {/* Schedule warnings (takes priority over pull-up toast) */}
+          {scheduleWarnings && scheduleWarnings.length > 0 && scheduleSummary && (
+            <ScheduleWarnings
+              warnings={scheduleWarnings}
+              summary={scheduleSummary}
+              onDismiss={dismissWarnings}
+            />
+          )}
+
+          {/* Pull-up toast (hidden when warnings are showing) */}
+          {pullUpToast && !(scheduleWarnings && scheduleWarnings.length > 0) && (
             <PullUpToast
               taskName={pullUpToast.taskName}
               onPullUp={handlePullUp}

@@ -73,6 +73,7 @@ export async function processChatMessage(
   tone: UserTone = 'friendly',
   projectContext?: ProjectContext,
   timezone?: string,
+  scheduleContext?: string,
 ): Promise<ChatProcessResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -80,7 +81,7 @@ export async function processChatMessage(
   }
 
   const client = new Anthropic({ apiKey });
-  const system = buildSystemPrompt(tone, existingTasks, currentPrefs, projectContext, timezone);
+  const system = buildSystemPrompt(tone, existingTasks, currentPrefs, projectContext, timezone, scheduleContext);
   const history = buildHistory(chatHistory);
   const messages: MessagePair[] = [...history, { role: 'user', content: input }];
 

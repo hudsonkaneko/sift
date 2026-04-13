@@ -4,7 +4,8 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { processChatMessage } from '@/lib/ai/claude';
 import type { ProjectContext } from '@/lib/ai/claude';
 import { preprocessBraindump, buildEnhancedMessage } from '@/lib/ai/preprocessor';
-import { mapTask, mapPreferences, normalizeColorPalette } from '@/lib/utils/db';
+import { buildScheduleContext } from '@/lib/ai/schedule-context';
+import { mapTask, mapPreferences, normalizeColorPalette, mapScheduledSlot, mapFixedBlock } from '@/lib/utils/db';
 import { randomColor } from '@/lib/utils/format';
 import type { ChatMessage, UserTone } from '@/lib/types/domain';
 
@@ -138,12 +139,35 @@ export async function POST(req: Request) {
       .single();
     const tone: UserTone = userRow?.tone || 'friendly';
 
+    // Fetch schedule context: slots and fixed blocks for next 14 days
+    const tz = timezone || 'UTC';
+    const nowForDates = new Date();
+    const dateParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(nowForDates);
+    const todayStr = `${dateParts.find(p => p.type === 'year')!.value}-${dateParts.find(p => p.type === 'month')!.value}-${dateParts.find(p => p.type === 'day')!.value}`;
+    const rangeEnd = new Date(todayStr + 'T12:00:00Z');
+    rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 13);
+    const rangeEndStr = rangeEnd.toISOString().split('T')[0];
+
+    const [slotsResult, blocksResult] = await Promise.all([
+      supabase.from('scheduled_slots').select('*').eq('user_id', userId)
+        .gte('scheduled_date', todayStr).lte('scheduled_date', rangeEndStr),
+      supabase.from('fixed_blocks').select('*').eq('user_id', userId)
+        .or(`specific_date.is.null,and(specific_date.gte.${todayStr},specific_date.lte.${rangeEndStr})`),
+    ]);
+
+    const scheduledSlots = (slotsResult.data || []).map(mapScheduledSlot);
+    const fixedBlocks = (blocksResult.data || []).map(mapFixedBlock);
+    const scheduleContext = buildScheduleContext(scheduledSlots, fixedBlocks, currentPrefs, tz);
+
     // Preprocess
     const preprocessed = preprocessBraindump(message);
     const enhancedMessage = buildEnhancedMessage(message, preprocessed);
 
     // Call AI
-    const result = await processChatMessage(enhancedMessage, existingTasks, currentPrefs, chatHistory, tone, projectContext, timezone);
+    const result = await processChatMessage(enhancedMessage, existingTasks, currentPrefs, chatHistory, tone, projectContext, timezone, scheduleContext);
 
     const actions: string[] = [];
     console.log('[chat] AI result:', { newTasks: result.newTasks.length, taskUpdates: result.taskUpdates.length, newBlocks: result.newBlocks.length });

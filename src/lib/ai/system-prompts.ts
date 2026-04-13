@@ -14,6 +14,7 @@ export function buildSystemPrompt(
   currentPrefs: SchedulingPreferences,
   projectContext?: ProjectContext,
   timezone?: string,
+  scheduleContext?: string,
 ): string {
   // Use client timezone to compute correct local date (server runs in UTC)
   const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -36,7 +37,9 @@ Current scheduling preferences:
 - Min block: ${currentPrefs.minBlockMinutes}min, Mornings: ${currentPrefs.preferMornings}, Evenings: ${currentPrefs.preferEvenings}
 - Avoid weekends: ${currentPrefs.avoidWeekends}
 - Custom rules: ${JSON.stringify(currentPrefs.customRules)}
-
+${scheduleContext ? `
+${scheduleContext}
+` : ''}
 Categories: School, Startup (Axion), Collab (Project Play), Personal.
 ${projectContext ? `
 PROJECT CONTEXT — This is a project-scoped chat for:
@@ -88,5 +91,12 @@ URGENCY (0-100) — This determines scheduling order WITHIN the same deadline ti
 - 0-19: Low stakes, flexible timing (organize notes, optional reading)
 Default to 30 unless the user signals urgency. Never set above 70 unless the user explicitly says it's critical/urgent/blocking.
 
-PROACTIVE: After creating tasks, check for missing info (deadlines, time estimates, categories) and ask via followUpQuestion. Priority: deadline > time estimate > category > recurrence.`;
+PROACTIVE: After creating tasks, check for missing info (deadlines, time estimates, categories) and ask via followUpQuestion. Priority: deadline > time estimate > category > recurrence.
+
+SCHEDULE AWARENESS: The "CURRENT SCHEDULE AWARENESS" section above shows real per-day free time and fixed commitments. USE IT to ground your responses:
+- When a user asks to add a task with a tight deadline, check the per-day free time — if the task won't fit before the deadline, say so explicitly and suggest the nearest feasible deadline or splitting the task.
+- When capacity utilization is high (>85%), gently flag overload rather than silently piling on more work.
+- When the user asks "when can I do X" or "do I have time for Y", reference specific days and free hours from the schedule (e.g., "Thursday has 4h free" rather than a generic answer).
+- Never invent free time or commitments that aren't in the schedule. If the schedule shows no free time on a given day, do not promise that day will work.
+- This information does NOT replace the "Generate Schedule" button — you are reasoning about feasibility; the actual placement happens via that button.`;
 }

@@ -112,7 +112,8 @@ export async function POST(req: Request) {
   console.log(`[gcal/sync] preserved ${preservedColors.size} user-customized color(s)`);
 
   // Delete ALL google-synced blocks for this user in this week range upfront
-  // (prevents duplicate key errors when multiple accounts share calendars)
+  // (prevents duplicate key errors when multiple accounts share calendars;
+  // also cleans up stale 'primary'-keyed blocks from older first-sync bootstrap)
   const { error: deleteAllError, count: deleteAllCount } = await supabase
     .from('fixed_blocks')
     .delete({ count: 'exact' })
@@ -125,6 +126,20 @@ export async function POST(req: Request) {
     console.error('[gcal/sync] ERROR deleting old blocks:', deleteAllError);
   } else {
     console.log(`[gcal/sync] deleted ${deleteAllCount ?? '?'} old google blocks for week`);
+  }
+
+  // One-time cleanup: remove any stale 'primary'-keyed blocks anywhere in the
+  // DB. These are legacy artifacts from the old first-sync race where events
+  // were inserted with google_calendar_id='primary' before real sources existed.
+  // They never get refreshed (re-syncs use real calendar IDs and only delete
+  // within the current week range), so they'd accumulate as orphans.
+  const { count: staleCount } = await supabase
+    .from('fixed_blocks')
+    .delete({ count: 'exact' })
+    .eq('user_id', userId)
+    .eq('google_calendar_id', 'primary');
+  if (staleCount && staleCount > 0) {
+    console.log(`[gcal/sync] cleaned up ${staleCount} stale 'primary'-keyed block(s)`);
   }
 
   interface GoogleEvent {
@@ -226,7 +241,7 @@ export async function POST(req: Request) {
       .eq('enabled', true);
 
     // Use .is() for null (PostgREST .eq() never matches NULL)
-    const { data: sources, error: sourcesError } = tokenRow.google_email
+    let { data: sources, error: sourcesError } = tokenRow.google_email
       ? await sourceQuery.eq('google_email', tokenRow.google_email)
       : await sourceQuery.is('google_email', null);
 
@@ -234,16 +249,63 @@ export async function POST(req: Request) {
       console.error('[gcal/sync] ERROR fetching sources:', sourcesError);
     }
 
+    // Bootstrap sources on first sync: if none exist, fetch calendar list from
+    // Google and create source rows with real calendar IDs. This avoids the
+    // 'primary' fallback that causes an id mismatch between blocks and sources.
+    if (!sources || sources.length === 0) {
+      console.log('[gcal/sync] no sources yet — bootstrapping from calendarList');
+      try {
+        const bootRes = await fetch(
+          'https://www.googleapis.com/calendar/v3/users/me/calendarList',
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        if (bootRes.ok) {
+          const bootData = await bootRes.json();
+          const bootCals = (bootData.items || []) as { id: string; summary?: string; backgroundColor?: string }[];
+          console.log(`[gcal/sync] bootstrap got ${bootCals.length} calendar(s)`);
+          for (const cal of bootCals) {
+            const { error: upsertErr } = await supabase
+              .from('google_calendar_sources')
+              .upsert({
+                user_id: userId,
+                google_calendar_id: cal.id,
+                google_email: tokenRow.google_email,
+                name: cal.summary || cal.id,
+                color: cal.backgroundColor || null,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'user_id,google_calendar_id,google_email', ignoreDuplicates: false });
+            if (upsertErr) console.error(`[gcal/sync] bootstrap upsert failed for ${cal.id}:`, upsertErr);
+          }
+          // Re-query sources now that we've created them
+          const rereadQuery = supabase
+            .from('google_calendar_sources')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('enabled', true);
+          const rereadResult = tokenRow.google_email
+            ? await rereadQuery.eq('google_email', tokenRow.google_email)
+            : await rereadQuery.is('google_email', null);
+          sources = rereadResult.data;
+          console.log(`[gcal/sync] bootstrap complete: ${sources?.length ?? 0} source(s) now available`);
+        } else {
+          const errBody = await bootRes.text();
+          console.error(`[gcal/sync] bootstrap calendarList failed (${bootRes.status}):`, errBody);
+        }
+      } catch (e) {
+        console.error('[gcal/sync] bootstrap exception:', e);
+      }
+    }
+
     console.log(`[gcal/sync] found ${sources?.length ?? 0} enabled source(s) for ${tokenRow.google_email}:`,
       (sources || []).map(s => ({ id: s.google_calendar_id, name: s.name, enabled: s.enabled })));
 
-    // Fall back to 'primary' if no sources exist yet (first sync before calendars fetched)
+    // Still fall back to 'primary' if bootstrap failed entirely (e.g., network blip)
     const calendarIds = sources && sources.length > 0
       ? sources.map(s => ({ id: s.google_calendar_id, color: s.color }))
       : [{ id: 'primary', color: null }];
 
     if (!sources || sources.length === 0) {
-      console.log('[gcal/sync] no sources found — falling back to "primary" calendar');
+      console.log('[gcal/sync] bootstrap failed — falling back to "primary" calendar');
     }
 
     // Fetch events from each enabled calendar

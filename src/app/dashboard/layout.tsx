@@ -8,6 +8,8 @@ import CalendarSourcesSidebar from '@/components/calendar/CalendarSourcesSidebar
 import SettingsPanel from '@/components/settings/SettingsPanel';
 import PullUpToast from '@/components/ui/PullUpToast';
 import ScheduleWarnings from '@/components/ui/ScheduleWarnings';
+import GCalErrorToast from '@/components/ui/GCalErrorToast';
+import GCalReconnectBanner from '@/components/ui/GCalReconnectBanner';
 import { useTasks } from '@/hooks/useTasks';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useFixedBlocks } from '@/hooks/useFixedBlocks';
@@ -330,6 +332,7 @@ export default function DashboardLayout({
               Failed to load data. Retrying...
             </div>
           )}
+          <GCalReconnectBanner accounts={gcal.accounts} />
           {/* Calendar + right sidebar row */}
           <div className="flex-1 min-h-0 flex">
             <div className="flex-1 min-w-0">
@@ -391,6 +394,15 @@ export default function DashboardLayout({
               taskName={pullUpToast.taskName}
               onPullUp={handlePullUp}
               onDismiss={() => setPullUpToast(null)}
+            />
+          )}
+
+          {/* GCal sync error (shown only when no warnings take priority) */}
+          {gcal.syncError && !(scheduleWarnings && scheduleWarnings.length > 0) && !pullUpToast && (
+            <GCalErrorToast
+              message={gcal.syncError}
+              onRetry={() => gcal.sync(weekOf)}
+              onDismiss={gcal.dismissSyncError}
             />
           )}
         </div>

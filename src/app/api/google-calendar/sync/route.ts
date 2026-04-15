@@ -18,6 +18,11 @@ async function refreshAccessToken(supabase: ReturnType<typeof createServiceClien
   if (!res.ok) {
     const errBody = await res.text();
     console.error(`[gcal/sync] token refresh failed (${res.status}):`, errBody);
+    // Mark the account as needing reconnection so the UI can prompt the user.
+    await supabase
+      .from('google_calendar_tokens')
+      .update({ refresh_failed_at: new Date().toISOString() })
+      .eq('id', tokenRow.id);
     return null;
   }
 
@@ -29,6 +34,7 @@ async function refreshAccessToken(supabase: ReturnType<typeof createServiceClien
     .update({
       access_token: data.access_token,
       token_expiry: newExpiry,
+      refresh_failed_at: null, // successful refresh clears any prior failure
       updated_at: new Date().toISOString(),
     })
     .eq('id', tokenRow.id);
@@ -71,6 +77,21 @@ export async function POST(req: Request) {
     token_expiry: t.token_expiry,
     has_refresh_token: !!t.refresh_token,
   })));
+
+  // Universal orphan cleanup: remove any sources with NULL google_email before
+  // processing. These are legacy artifacts from earlier code paths where sources
+  // could be created without an email. They can't be matched to a token and
+  // cause "enabled=true but nothing syncs" mystery states.
+  {
+    const { count: orphanCount } = await supabase
+      .from('google_calendar_sources')
+      .delete({ count: 'exact' })
+      .eq('user_id', userId)
+      .is('google_email', null);
+    if (orphanCount && orphanCount > 0) {
+      console.log(`[gcal/sync] cleaned up ${orphanCount} orphan NULL-email source(s)`);
+    }
+  }
 
   // Calculate week range (Sun-Sat)
   const weekStart = new Date(weekOf + 'T00:00:00Z');
@@ -164,6 +185,7 @@ export async function POST(req: Request) {
     google_event_id: string;
     google_calendar_id: string;
     specific_date: string;
+    is_all_day: boolean;
   }>();
 
   // Process each account
@@ -209,12 +231,6 @@ export async function POST(req: Request) {
             await supabase
               .from('google_calendar_sources')
               .update({ google_email: primaryEmail, updated_at: new Date().toISOString() })
-              .eq('user_id', userId)
-              .is('google_email', null);
-            // Delete any remaining NULL-email orphan sources
-            await supabase
-              .from('google_calendar_sources')
-              .delete()
               .eq('user_id', userId)
               .is('google_email', null);
             console.log(`[gcal/sync] backfilled google_email: ${primaryEmail}`);
@@ -327,18 +343,57 @@ export async function POST(req: Request) {
       const events = (eventsData.items || []) as GoogleEvent[];
       console.log(`[gcal/sync] calendar ${cal.id}: ${events.length} raw event(s)`);
 
-      let skippedAllDay = 0;
+      let skippedMultiDay = 0;
       let skippedCancelled = 0;
+      let allDayAdded = 0;
+      let timedAdded = 0;
 
       for (const event of events) {
-        if (!event.start.dateTime || !event.end.dateTime) {
-          skippedAllDay++;
-          continue;
-        }
         if (event.status === 'cancelled') {
           skippedCancelled++;
           continue;
         }
+
+        // All-day event: has start.date and end.date (no dateTime).
+        // Google's end.date is exclusive (the day AFTER the last day).
+        if (!event.start.dateTime && event.start.date) {
+          const startDate = event.start.date; // YYYY-MM-DD
+          // For v1, only support single-day all-day events.
+          // Multi-day (end.date > start.date + 1) would need expansion per day.
+          const endDate = event.end?.date;
+          if (endDate) {
+            const s = new Date(startDate + 'T00:00:00Z');
+            const e = new Date(endDate + 'T00:00:00Z');
+            const dayDiff = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24));
+            if (dayDiff > 1) {
+              skippedMultiDay++;
+              continue;
+            }
+          }
+          const [y, m, d] = startDate.split('-').map(Number);
+          const dayOfWeek = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+          const dedupeKey = `${event.id}::${cal.id}`;
+          blocksMap.set(dedupeKey, {
+            user_id: userId,
+            name: event.summary || 'All-day event',
+            day_of_week: dayOfWeek,
+            start_hour: 0,
+            start_minute: 0,
+            end_hour: 0,
+            end_minute: 0,
+            user_created: false,
+            color: cal.color,
+            recurring: false,
+            google_event_id: event.id,
+            google_calendar_id: cal.id,
+            specific_date: startDate,
+            is_all_day: true,
+          });
+          allDayAdded++;
+          continue;
+        }
+
+        if (!event.start.dateTime || !event.end.dateTime) continue;
 
         // Parse local time directly from the ISO string to avoid
         // server timezone conversion (Vercel runs in UTC)
@@ -374,10 +429,12 @@ export async function POST(req: Request) {
           google_event_id: event.id,
           google_calendar_id: cal.id,
           specific_date: specificDate,
+          is_all_day: false,
         });
+        timedAdded++;
       }
 
-      console.log(`[gcal/sync] calendar ${cal.id}: added ${events.length - skippedAllDay - skippedCancelled} blocks (skipped ${skippedAllDay} all-day, ${skippedCancelled} cancelled)`);
+      console.log(`[gcal/sync] calendar ${cal.id}: ${timedAdded} timed + ${allDayAdded} all-day (skipped ${skippedCancelled} cancelled, ${skippedMultiDay} multi-day)`);
     }
   }
 

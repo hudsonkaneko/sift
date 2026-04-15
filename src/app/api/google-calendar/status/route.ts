@@ -15,7 +15,7 @@ export async function GET() {
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('google_calendar_tokens')
-    .select('id, user_id, google_email, created_at, updated_at')
+    .select('id, user_id, google_email, refresh_failed_at, created_at, updated_at')
     .eq('user_id', userId);
 
   console.log('[gcal/status] query result:', { count: data?.length ?? 0, error: error?.message ?? null });

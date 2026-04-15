@@ -12,6 +12,7 @@ export function useGoogleCalendar() {
   const [syncing, setSyncing] = useState(false);
 
   const [connectionError, setConnectionError] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Re-fetch status when redirected back from OAuth with ?gcal=connected or ?gcal=error
   useEffect(() => {
@@ -47,12 +48,17 @@ export function useGoogleCalendar() {
         body: JSON.stringify({ weekOf }),
       });
       console.log('[useGoogleCalendar] sync result:', result);
+      setSyncError(null); // clear any stale error on success
     } catch (e) {
       console.error('[useGoogleCalendar] sync error:', e);
+      const msg = e instanceof Error ? e.message : 'Google Calendar sync failed';
+      setSyncError(msg);
     } finally {
       setSyncing(false);
     }
   };
+
+  const dismissSyncError = () => setSyncError(null);
 
   const disconnect = async (googleEmail: string) => {
     // Optimistic: remove account from list instantly
@@ -65,5 +71,5 @@ export function useGoogleCalendar() {
     }).then(() => mutate());
   };
 
-  return { accounts, hasAccounts, syncing, isLoading, error, connectionError, setConnectionError, sync, disconnect, mutate };
+  return { accounts, hasAccounts, syncing, isLoading, error, connectionError, setConnectionError, syncError, dismissSyncError, sync, disconnect, mutate };
 }

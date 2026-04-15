@@ -41,6 +41,7 @@ export function mapFixedBlock(row: any): FixedBlock {
     googleEventId: row.google_event_id ?? null,
     googleCalendarId: row.google_calendar_id ?? null,
     specificDate: row.specific_date ?? null,
+    isAllDay: row.is_all_day ?? false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -52,6 +53,7 @@ export function mapGoogleCalendarAccount(row: any): GoogleCalendarAccount {
     id: row.id,
     userId: row.user_id,
     googleEmail: row.google_email,
+    refreshFailedAt: row.refresh_failed_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

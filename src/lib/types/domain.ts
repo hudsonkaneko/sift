@@ -44,6 +44,7 @@ export interface FixedBlock {
   googleEventId: string | null;
   googleCalendarId: string | null;
   specificDate: string | null;
+  isAllDay: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +53,7 @@ export interface GoogleCalendarAccount {
   id: string;
   userId: string;
   googleEmail: string;
+  refreshFailedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

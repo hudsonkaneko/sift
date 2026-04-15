@@ -80,6 +80,7 @@ export function buildScheduleContext(
   for (const date of dates) occupiedPerDate.set(date, []);
 
   for (const fb of fixedBlocks) {
+    if (fb.isAllDay) continue; // all-day events don't consume any time slot
     const start = fb.startHour * 60 + fb.startMinute;
     const end = fb.endHour * 60 + fb.endMinute;
     if (fb.specificDate) {
@@ -159,6 +160,7 @@ export function buildScheduleContext(
     const dow = new Date(date + 'T12:00:00Z').getUTCDay();
     const dayBlocks: { start: number; end: number; name: string }[] = [];
     for (const fb of fixedBlocks) {
+      if (fb.isAllDay) continue;
       if (fb.specificDate) {
         if (fb.specificDate === date) {
           dayBlocks.push({ start: fb.startHour * 60 + fb.startMinute, end: fb.endHour * 60 + fb.endMinute, name: fb.name });

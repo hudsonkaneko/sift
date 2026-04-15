@@ -6,6 +6,7 @@ import type { ScheduledSlotWithTask, FixedBlock, Task } from '@/lib/types/domain
 import { DAYS, DAY_INDICES, HOUR_HEIGHT, START_HOUR, END_HOUR, GRID_PAD_TOP, SNAP_MINUTES, getWeekDates, dateToDayOfMonth, dateToDayOfWeek, formatWeekLabel } from './constants';
 import TimeColumn from './TimeColumn';
 import DayColumn from './DayColumn';
+import AllDayStrip from './AllDayStrip';
 import EventFormModal, { type EventFormState } from './EventFormModal';
 import { BlockContextMenu, SwapContextMenu, type BlockMenuState, type SwapMenuState } from './ContextMenu';
 import { useDragDrop } from './useDragDrop';
@@ -318,6 +319,13 @@ export default function CalendarView({
         })}
       </div>
 
+      {/* All-day events strip (only renders if any all-day events this week) */}
+      <AllDayStrip
+        weekDates={weekDates}
+        todayDateStr={todayDateStr}
+        allDayBlocks={fixedBlocks.filter(b => b.isAllDay)}
+      />
+
       {/* Grid */}
       <div className="flex-1 overflow-y-auto" ref={scrollRef}>
         <div className="flex" style={{ minHeight: gridHeight }}>
@@ -329,7 +337,7 @@ export default function CalendarView({
           {DAY_INDICES.map(dayIndex => {
             const dateStr = weekDates[dayIndex];
             const dayBlocks = fixedBlocks.filter(b =>
-              b.specificDate ? b.specificDate === dateStr : b.dayOfWeek === dayIndex
+              !b.isAllDay && (b.specificDate ? b.specificDate === dateStr : b.dayOfWeek === dayIndex)
             );
             const daySlots = slots.filter(s => s.scheduledDate === dateStr);
 

@@ -352,6 +352,8 @@ export async function POST(req: Request) {
 
   const GCAL_BUFFER_MINUTES = 10;
   for (const fb of fixedBlocks) {
+    // All-day events are informational only — they don't block any time slot.
+    if (fb.is_all_day) continue;
     const blockStart = fb.start_hour * 60 + fb.start_minute;
     const blockEnd = fb.end_hour * 60 + fb.end_minute;
     const interval: Interval = fb.google_event_id

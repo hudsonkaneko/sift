@@ -48,7 +48,7 @@ export function useFixedBlocks(weekOf?: string) {
     }
   }, [fixedBlocks, weekOf]);
 
-  const addFixedBlock = async (block: Omit<FixedBlock, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'googleEventId' | 'googleCalendarId' | 'specificDate'>) => {
+  const addFixedBlock = async (block: Omit<FixedBlock, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'googleEventId' | 'googleCalendarId' | 'specificDate' | 'isAllDay'>) => {
     // Optimistic: show block on calendar instantly
     const now = new Date().toISOString();
     const tempBlock: FixedBlock = {
@@ -58,6 +58,7 @@ export function useFixedBlocks(weekOf?: string) {
       googleEventId: null,
       googleCalendarId: null,
       specificDate: null,
+      isAllDay: false,
       createdAt: now,
       updatedAt: now,
     };

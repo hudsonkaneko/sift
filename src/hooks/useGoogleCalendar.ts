@@ -43,12 +43,17 @@ export function useGoogleCalendar() {
     console.log(`[useGoogleCalendar] sync called with weekOf=${weekOf}`);
     setSyncing(true);
     try {
-      const result = await apiFetch<{ synced: number }>('/api/google-calendar/sync', {
+      const result = await apiFetch<{ synced: number; failedCalendars?: string[]; accountFailures?: { email: string; reason: string }[] }>('/api/google-calendar/sync', {
         method: 'POST',
         body: JSON.stringify({ weekOf }),
       });
       console.log('[useGoogleCalendar] sync result:', result);
-      setSyncError(null); // clear any stale error on success
+      if (result.failedCalendars?.length || result.accountFailures?.length) {
+        const n = (result.failedCalendars?.length ?? 0) + (result.accountFailures?.length ?? 0);
+        setSyncError(`${n} calendar${n === 1 ? '' : 's'} couldn't refresh — showing last-known events`);
+      } else {
+        setSyncError(null);
+      }
     } catch (e) {
       console.error('[useGoogleCalendar] sync error:', e);
       const msg = e instanceof Error ? e.message : 'Google Calendar sync failed';

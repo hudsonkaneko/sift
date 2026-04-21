@@ -68,15 +68,37 @@ export async function GET(req: Request) {
   }
 
   const supabase = createServiceClient();
+
+  // Google only returns a refresh_token when consent is explicitly prompted.
+  // If it's missing, reuse an existing one rather than overwriting with NULL
+  // (which would silently break sync as soon as the access token expires).
+  let refreshToken: string | undefined = tokens.refresh_token;
+  if (!refreshToken) {
+    const { data: existing } = await supabase
+      .from('google_calendar_tokens')
+      .select('refresh_token')
+      .eq('user_id', state)
+      .eq('google_email', googleEmail)
+      .maybeSingle();
+    if (existing?.refresh_token) {
+      console.log('[gcal/callback] no refresh_token in response — reusing existing one');
+      refreshToken = existing.refresh_token;
+    } else {
+      console.error('[gcal/callback] no refresh_token returned and none on file — user must revoke at https://myaccount.google.com/permissions and reconnect');
+      return NextResponse.redirect(`${origin}/dashboard?gcal=error&reason=no_refresh_token`);
+    }
+  }
+
   const { error: dbError } = await supabase
     .from('google_calendar_tokens')
     .upsert({
       user_id: state,
       google_email: googleEmail,
       access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
+      refresh_token: refreshToken,
       token_expiry: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
       calendar_id: 'primary',
+      refresh_failed_at: null,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,google_email' });
 

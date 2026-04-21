@@ -31,10 +31,17 @@ function todayStr(): string {
 
 export default function GCalReconnectBanner({ accounts }: GCalReconnectBannerProps) {
   const [dismissedMap, setDismissedMapState] = useState<Record<string, string>>({});
+  // Avoid hydration mismatch: localStorage + local-date comparisons can diverge
+  // between server (no storage, UTC) and client (populated, local). Render
+  // nothing until after mount — the banner is advisory so first paint is fine.
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setDismissedMapState(getDismissed());
+    setMounted(true);
   }, []);
+
+  if (!mounted) return null;
 
   const failing = accounts.filter(a => {
     if (!a.refreshFailedAt) return false;

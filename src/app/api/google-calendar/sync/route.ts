@@ -132,22 +132,12 @@ export async function POST(req: Request) {
   }
   console.log(`[gcal/sync] preserved ${preservedColors.size} user-customized color(s)`);
 
-  // Delete ALL google-synced blocks for this user in this week range upfront
-  // (prevents duplicate key errors when multiple accounts share calendars;
-  // also cleans up stale 'primary'-keyed blocks from older first-sync bootstrap)
-  const { error: deleteAllError, count: deleteAllCount } = await supabase
-    .from('fixed_blocks')
-    .delete({ count: 'exact' })
-    .eq('user_id', userId)
-    .not('google_event_id', 'is', null)
-    .gte('specific_date', weekStartStr)
-    .lte('specific_date', weekEndStr);
-
-  if (deleteAllError) {
-    console.error('[gcal/sync] ERROR deleting old blocks:', deleteAllError);
-  } else {
-    console.log(`[gcal/sync] deleted ${deleteAllCount ?? '?'} old google blocks for week`);
-  }
+  // Track which calendars we actually refetched this run. We only overwrite
+  // existing events for calendars whose fetch succeeded — a failed fetch
+  // (auth error, network blip, Google outage) must never wipe the user's view.
+  const successfulCalendarIds = new Set<string>();
+  const failedCalendars: Array<{ id: string; status: number; error: string }> = [];
+  const accountFailures: Array<{ email: string; reason: string }> = [];
 
   // One-time cleanup: remove any stale 'primary'-keyed blocks anywhere in the
   // DB. These are legacy artifacts from the old first-sync race where events
@@ -201,6 +191,7 @@ export async function POST(req: Request) {
       const refreshed = await refreshAccessToken(supabase, tokenRow);
       if (!refreshed) {
         console.error(`[gcal/sync] SKIP account — token refresh failed for ${tokenRow.google_email ?? 'NULL'}`);
+        accountFailures.push({ email: tokenRow.google_email ?? 'unknown', reason: 'refresh_failed' });
         continue;
       }
       accessToken = refreshed;
@@ -236,15 +227,18 @@ export async function POST(req: Request) {
             console.log(`[gcal/sync] backfilled google_email: ${primaryEmail}`);
           } else {
             console.error('[gcal/sync] SKIP account — no primary calendar found, cannot determine email');
+            accountFailures.push({ email: 'unknown', reason: 'no_primary_calendar' });
             continue;
           }
         } else {
           const errBody = await calListRes.text();
           console.error(`[gcal/sync] SKIP account — calendarList failed (${calListRes.status}):`, errBody);
+          accountFailures.push({ email: 'unknown', reason: `calendarlist_${calListRes.status}` });
           continue;
         }
       } catch (e) {
         console.error('[gcal/sync] SKIP account — calendarList exception:', e);
+        accountFailures.push({ email: 'unknown', reason: 'calendarlist_exception' });
         continue;
       }
     }
@@ -336,6 +330,7 @@ export async function POST(req: Request) {
       if (!eventsRes.ok) {
         const errBody = await eventsRes.text();
         console.error(`[gcal/sync] SKIP calendar ${cal.id} — events fetch failed (${eventsRes.status}):`, errBody);
+        failedCalendars.push({ id: cal.id, status: eventsRes.status, error: errBody.slice(0, 200) });
         continue;
       }
 
@@ -435,7 +430,39 @@ export async function POST(req: Request) {
       }
 
       console.log(`[gcal/sync] calendar ${cal.id}: ${timedAdded} timed + ${allDayAdded} all-day (skipped ${skippedCancelled} cancelled, ${skippedMultiDay} multi-day)`);
+      successfulCalendarIds.add(cal.id);
     }
+  }
+
+  // If every fetch failed, leave the DB untouched and surface an error so the
+  // UI shows a reconnect/retry toast instead of silently emptying the calendar.
+  if (successfulCalendarIds.size === 0 && (failedCalendars.length > 0 || accountFailures.length > 0)) {
+    console.error('[gcal/sync] ALL fetches failed — preserving existing events', { failedCalendars, accountFailures });
+    const firstReason = accountFailures[0]?.reason ?? failedCalendars[0]?.status;
+    return NextResponse.json({
+      error: `Google Calendar unreachable (${firstReason}). Existing events kept — try again or reconnect.`,
+      failedCalendars: failedCalendars.map(f => f.id),
+      accountFailures,
+    }, { status: 502 });
+  }
+
+  // Scoped delete: only wipe the week's events for calendars we actually
+  // refetched. Calendars whose fetch failed keep their prior state so the
+  // user sees stale data rather than an empty week.
+  if (successfulCalendarIds.size > 0) {
+    const { error: deleteErr, count: deletedCount } = await supabase
+      .from('fixed_blocks')
+      .delete({ count: 'exact' })
+      .eq('user_id', userId)
+      .in('google_calendar_id', Array.from(successfulCalendarIds))
+      .not('google_event_id', 'is', null)
+      .gte('specific_date', weekStartStr)
+      .lte('specific_date', weekEndStr);
+    if (deleteErr) {
+      console.error('[gcal/sync] ERROR deleting old blocks:', deleteErr);
+      return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+    }
+    console.log(`[gcal/sync] deleted ${deletedCount ?? '?'} old block(s) across ${successfulCalendarIds.size} calendar(s)`);
   }
 
   // Restore user-customized colors
@@ -462,6 +489,10 @@ export async function POST(req: Request) {
     console.log('[gcal/sync] no blocks to insert — check: are there timed events this week?');
   }
 
-  console.log(`[gcal/sync] === DONE === synced ${blocks.length} events`);
-  return NextResponse.json({ synced: blocks.length });
+  console.log(`[gcal/sync] === DONE === synced ${blocks.length} events (failed calendars: ${failedCalendars.length}, account failures: ${accountFailures.length})`);
+  return NextResponse.json({
+    synced: blocks.length,
+    failedCalendars: failedCalendars.length > 0 ? failedCalendars.map(f => f.id) : undefined,
+    accountFailures: accountFailures.length > 0 ? accountFailures : undefined,
+  });
 }
